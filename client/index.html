@@ -123,6 +123,11 @@
       </div>
     </div>
 
+    <!-- ========== 全局提示 ==========
+         错误提示统一走这里：固定定位、始终可见，
+         避免写进当前隐藏视图内的元素而导致"点击无反应" -->
+    <div id="toast" class="toast" hidden></div>
+
     <!-- ========== 断连遮罩 ========== -->
     <div id="overlay-disconnect" class="overlay" hidden>
       <div class="overlay-box">

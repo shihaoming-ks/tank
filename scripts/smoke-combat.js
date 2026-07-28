@@ -287,6 +287,13 @@ async function main() {
   console.log('\n6. 结束后行为');
   {
     const { a, b, idA, idB } = await setupMatch();
+    // 先跑一会儿累积帧号，否则测不出"换局帧号回退"这个 bug
+    await sleep(700);
+    const lastSnapBefore = a.snapshots[a.snapshots.length - 1];
+    const lastTickBefore = lastSnapBefore?.t ?? 0;
+    const matchIdBefore = lastSnapBefore?.m ?? 0;
+    check('换局前已有帧号累积', lastTickBefore > 10, `t=${lastTickBefore}`);
+
     b.send(C2S.LEAVE, {});
     await sleep(300);
 
@@ -318,6 +325,30 @@ async function main() {
     const freshA = a.tank(idA);
     check('新局血量已重置', freshA?.hp === MAX_HP, String(freshA?.hp));
     check('新局玩家复活', freshA?.alive === true);
+
+    // ---- 回归：换局后帧号必须单调递增 ----
+    // 曾因 startGame 把 tick 重置为 0，导致客户端防乱序逻辑
+    // （t < 上一帧则丢弃）把新局前 N 帧全部丢掉，
+    // 表现为"点了再来一局要等很久才开始"，等待时长≈上一局时长。
+    const firstNew = a.snapshots[0];
+    check('新局帧号未回退', firstNew?.t > lastTickBefore, `${lastTickBefore} → ${firstNew?.t}`);
+    check('matchId 已递增', firstNew?.m > matchIdBefore, `${matchIdBefore} → ${firstNew?.m}`);
+
+    const ticks = a.snapshots.map((s) => s.t);
+    check('新局帧号严格递增', ticks.every((t, i) => i === 0 || t > ticks[i - 1]));
+
+    // 复刻客户端防乱序判断，确认不会丢帧
+    let prev = null;
+    let dropped = 0;
+    for (const snap of a.snapshots) {
+      const sameMatch = prev && (prev.m ?? 0) === (snap.m ?? 0);
+      if (sameMatch && snap.t < prev.t) {
+        dropped++;
+        continue;
+      }
+      prev = snap;
+    }
+    check('客户端防乱序逻辑不会丢帧', dropped === 0, `丢弃 ${dropped} 帧`);
 
     a.close();
     b.close();

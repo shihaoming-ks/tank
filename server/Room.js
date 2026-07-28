@@ -59,8 +59,18 @@ export class Room {
      * @type {Array<object>}
      */
     this.pendingEvents = [];
-    /** 递增帧号，客户端可据此丢弃乱序到达的旧快照 */
+    /**
+     * 递增帧号，客户端据此丢弃乱序到达的旧快照。
+     *
+     * ⚠️ **在房间生命周期内单调递增，开新局也不重置**。
+     * 曾因在 startGame 里重置为 0 而引入严重 bug：
+     * 上局跑到 t=650 后开新局，新局从 t=1 开始，
+     * 客户端的防乱序判断（t < 上一帧则丢弃）会把新局前 650 帧全部丢掉，
+     * 表现为“点了再来一局要等很久才开始”，且等待时长≈上局时长。
+     */
     this.tick = 0;
+    /** 对局序号。每开一局 +1，客户端据此识别“换局”并重置本地帧号基准 */
+    this.matchId = 0;
     this.startedAt = 0;
     /** @type {NodeJS.Timeout|null} */
     this.timer = null;
@@ -216,7 +226,9 @@ export class Room {
   /** 开局：重置全部坦克状态并启动 tick 循环 */
   startGame() {
     this.phase = PHASE.PLAYING;
-    this.tick = 0;
+    // 注意：故意不重置 this.tick（原因见 constructor 中的说明），
+    // 换局靠 matchId 辨识
+    this.matchId++;
     this.startedAt = Date.now();
     this.bullets = [];
     this.pendingEvents = [];
@@ -238,7 +250,7 @@ export class Room {
       this.needMap.add(p.id);
     }
 
-    logger.info({ evt: 'game_start', roomId: this.id, size: this.size });
+    logger.info({ evt: 'game_start', roomId: this.id, size: this.size, matchId: this.matchId });
     this.pushEvent({ kind: EVENT_KIND.START });
     this.flushEvents();
     this.broadcastRoom();
@@ -565,6 +577,7 @@ export class Room {
   snapshot(now) {
     return {
       t: this.tick,
+      m: this.matchId,
       timeLeft: Math.max(0, MATCH_DURATION_MS - (now - this.startedAt)),
       tanks: [...this.players.values()].map((p) => ({
         id: p.id,

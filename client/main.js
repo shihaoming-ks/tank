@@ -60,6 +60,7 @@ const els = {
   // 遮罩
   overlay: $('#overlay-disconnect'),
   disconnectReason: $('#disconnect-reason'),
+  toast: $('#toast'),
 };
 
 /** 本地会话状态。仅缓存服务端下发的数据，不做任何推断 */
@@ -91,7 +92,7 @@ function showView(name) {
   if (name === 'game') drawFrame();
 }
 
-/** 错误提示，3.5s 后自动消失 */
+/** 错误提示（3.5s 后自动消失） */
 let errorTimer = null;
 function showError(el, text) {
   el.textContent = text;
@@ -102,9 +103,23 @@ function showError(el, text) {
   }, 3500);
 }
 
-function currentErrorEl() {
-  if (!els.views.room.hidden) return els.roomError;
-  return els.lobbyError;
+/**
+ * 全局 Toast。
+ *
+ * 为何不再用"按当前视图挑选错误元素"的做法：
+ * 那种写法一旦出现新视图（如结算面板处于 game 视图），
+ * 错误就会被写进**当前隐藏的**元素里，表现为"点击毫无反应"，且极难定位。
+ * 固定定位的全局 Toast 从结构上消除这类问题。
+ */
+let toastTimer = null;
+function toast(text, tone = 'error') {
+  els.toast.textContent = text;
+  els.toast.className = `toast toast-${tone}`;
+  els.toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    els.toast.hidden = true;
+  }, 3000);
 }
 
 // ---------------- 昵称持久化 ----------------
@@ -309,8 +324,15 @@ net.on(S2C.ROOM, (msg) => renderRoom(msg));
 net.on(S2C.SNAPSHOT, (msg) => {
   // 地图只在首帧下发，需缓存
   if (msg.map) renderer.setMap(msg.map);
-  // 丢弃乱序到达的旧帧，否则画面会出现回跳
-  if (state.snapshot && msg.t < state.snapshot.t) return;
+
+  // 丢弃乱序到达的旧帧，否则画面会出现回跳。
+  // ⚠️ 必须先比对 matchId：换局时帧号基准会变，
+  //    只比 t 会把新局的帧全部误判为"旧帧"而丢弃，
+  //    导致画面冻结在上一局最后一帧。
+  const prev = state.snapshot;
+  const sameMatch = prev && (prev.m ?? 0) === (msg.m ?? 0);
+  if (sameMatch && msg.t < prev.t) return;
+
   state.snapshot = msg;
   updateHudFromSnapshot(msg);
   // 保底绘制：不依赖 rAF 是否可用
@@ -333,7 +355,8 @@ net.on(S2C.OVER, (msg) => {
 
 net.on(S2C.ERROR, (msg) => {
   console.warn('[app] 服务端错误', msg.code, msg.message);
-  showError(currentErrorEl(), msg.message);
+  // 统一走全局 Toast，保证任何视图下都可见
+  toast(msg.message);
 });
 
 net.on(S2C.SHUTDOWN, (msg) => {
@@ -386,14 +409,24 @@ function showResult(result) {
     els.scoreBody.append(tr);
   }
 
-  // 少于 2 人时无法直接再来一局，需等其他玩家加入
-  const canAgain = (state.room?.players?.length ?? 0) >= 2;
-  els.btnAgain.disabled = !canAgain;
-  els.overHint.textContent = canAgain
-    ? state.room?.hostId === state.selfId
-      ? ''
-      : '仅房主可以开始新对局'
-    : '至少需要 2 名玩家才能开始新对局';
+  // 按身份区分结算面板的可操作性：
+  // 非房主看到的是"等待房主"，而不是一个点了没反应的按钮
+  const room = state.room;
+  const isHost = room?.hostId === state.selfId;
+  const count = room?.players?.length ?? 0;
+  const enough = count >= (room?.minPlayers ?? 2);
+  const hostName = room?.players?.find((p) => p.id === room.hostId)?.nickname;
+
+  els.btnAgain.hidden = !isHost;
+  els.btnAgain.disabled = !enough;
+
+  if (!enough) {
+    els.overHint.textContent = `等待玩家加入（当前 ${count} 人，至少需要 2 人）`;
+  } else if (isHost) {
+    els.overHint.textContent = '';
+  } else {
+    els.overHint.textContent = `等待房主${hostName ? `（${hostName}）` : ''}开始新对局…`;
+  }
 
   els.overlayOver.hidden = false;
   input.setEnabled(false);
@@ -449,8 +482,29 @@ els.nickname.addEventListener('keydown', (e) => {
 
 els.btnStart.addEventListener('click', () => net.send(C2S.START, {}));
 
-/** 请求开新一局。服务端会校验房主身份与人数 */
+/**
+ * 请求开新一局。
+ *
+ * 非房主在本地就拦掉并给出提示：否则用户点了按钮，
+ * 服务端静默拒绝（NOT_HOST），界面毫无变化，
+ * 直到房主真正开局才动 —— 主观感受就是"等了很久才开始"。
+ */
 function requestRestart() {
+  const room = state.room;
+  if (!room) return;
+
+  if (room.hostId !== state.selfId) {
+    const host = room.players.find((p) => p.id === room.hostId);
+    toast(`只有房主${host ? `（${host.nickname}）` : ''}可以开始新对局`, 'warn');
+    return;
+  }
+  if (room.players.length < (room.minPlayers ?? 2)) {
+    toast('至少需要 2 名玩家才能开始', 'warn');
+    return;
+  }
+
+  // 给出即时反馈，避免用户以为没点到而反复点击
+  toast('正在开始新对局…', 'ok');
   net.send(C2S.START, {});
 }
 els.btnAgain.addEventListener('click', requestRestart);
