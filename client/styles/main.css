@@ -1,0 +1,180 @@
+/* 坦克竞技场 —— 基础样式
+   刻意避开通用 AI 审美：不用紫色渐变、不用 Inter/Roboto。
+   走军事仪表盘方向：暗底 + 琥珀色高亮 + 等宽字体。 */
+
+:root {
+  --bg: #0d0f0e;
+  --bg-panel: #141816;
+  --bg-inset: #0a0c0b;
+  --line: #2a302c;
+  --fg: #d8dcd6;
+  --fg-dim: #7c857e;
+  --amber: #f6ae2d;
+  --green: #44bba4;
+  --red: #e94f37;
+  --mono: 'IBM Plex Mono', 'SF Mono', Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+  /* 细网格底纹，呼应战场 tilemap */
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: -1px -1px;
+  color: var(--fg);
+  font-family: var(--mono);
+  font-size: 14px;
+}
+
+.panel {
+  width: min(560px, 100%);
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 28px;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 60%);
+}
+
+.panel-head {
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.subtitle {
+  margin: 6px 0 0;
+  color: var(--fg-dim);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.label {
+  color: var(--fg-dim);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+.dot-pending {
+  background: var(--amber);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.dot-ok {
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+}
+.dot-bad {
+  background: var(--red);
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.btn {
+  width: 100%;
+  margin: 20px 0 0;
+  padding: 12px;
+  background: transparent;
+  border: 1px solid var(--amber);
+  border-radius: 2px;
+  color: var(--amber);
+  font-family: inherit;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn:hover:not(:disabled) {
+  background: rgb(246 174 45 / 12%);
+}
+.btn:disabled {
+  border-color: var(--line);
+  color: var(--fg-dim);
+  cursor: not-allowed;
+}
+
+.log-wrap {
+  margin-top: 24px;
+}
+
+.log-head {
+  color: var(--fg-dim);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  margin-bottom: 8px;
+}
+
+.log {
+  height: 180px;
+  overflow-y: auto;
+  padding: 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.log-line {
+  color: var(--fg-dim);
+  word-break: break-all;
+}
+.log-ok {
+  color: var(--green);
+}
+.log-warn {
+  color: var(--amber);
+}
+.log-bad {
+  color: var(--red);
+}
+
+.hint {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--fg-dim);
+  font-size: 11px;
+  line-height: 1.8;
+}

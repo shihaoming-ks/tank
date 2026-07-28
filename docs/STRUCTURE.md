@@ -1,6 +1,7 @@
 # 坦克竞技场 —— 目录结构约定
 
 > 本文件是**结构契约**。新增文件前先确认它属于哪一层，避免逻辑散落。
+> 标记 `[S1.x]` / `[S2]` 的文件为**计划中**，尚未创建。
 
 ## 全景
 
@@ -14,39 +15,42 @@ tank/
 ├── README.md                   # 启动/测试/操作说明
 │
 ├── server/                     # 【服务端】权威状态，Node 独占
-│   ├── index.js                #   进程入口：HTTP 静态托管 + WS 升级 + /healthz
-│   ├── RoomManager.js          #   房间集合：创建/查找/销毁、玩家进出路由
-│   ├── Room.js                 #   单房间：世界状态 + 30Hz tick + 广播
-│   ├── physics.js              #   纯函数：移动、碰撞、子弹推进（可单测）
-│   ├── map.js                  #   tilemap 生成
-│   └── logger.js               #   结构化日志 { ts, evt, roomId, playerId }
+│   ├── index.js                #   进程入口：HTTP + WS 升级 + /healthz + 优雅退出
+│   ├── config.js               #   环境变量读取，带安全默认值
+│   ├── logger.js               #   结构化日志 { ts, level, evt, roomId, playerId }
+│   ├── static.js               #   静态文件服务（含目录穿越防护）
+│   ├── RoomManager.js          #   [S1.2] 房间集合：创建/查找/销毁、玩家进出路由
+│   ├── Room.js                 #   [S1.2] 单房间：世界状态 + 30Hz tick + 广播
+│   ├── map.js                  #   [S1.3] tilemap 生成
+│   └── physics.js              #   [S1.3] 纯函数：移动、碰撞、子弹推进（可单测）
 │
 ├── shared/                     # 【双端共享】浏览器与 Node 同时 import 同一物理文件
 │   ├── constants.js            #   全部可调参数的唯一来源
-│   └── protocol.js             #   消息 type 常量 + payload 校验
+│   └── protocol.js             #   消息 type 常量 + 编解码 + 校验
 │
 ├── client/                     # 【客户端】仅表现层，零判定逻辑
-│   ├── index.html              #   大厅 + 战场 DOM
-│   ├── main.js                 #   状态机 lobby → playing → over
-│   ├── net.js                  #   WS 连接、重连提示、消息分发
-│   ├── input.js                #   键盘 → intent（仅状态变化时发送）
-│   ├── render.js               #   Canvas 绘制（当前为几何图形占位）
+│   ├── index.html              #   页面骨架
+│   ├── main.js                 #   入口。[S1.2] 起扩展为状态机 lobby → playing → over
+│   ├── net.js                  #   WS 连接、地址自适应、消息分发
+│   ├── input.js                #   [S1.3] 键盘 → intent（仅状态变化时发送）
+│   ├── render.js               #   [S1.3] Canvas 绘制（几何图形占位）
 │   └── styles/
 │       └── main.css
 │
 ├── test/                       # 【测试】node:test 内置，零额外依赖
-│   └── physics.test.js
+│   └── physics.test.js         #   [S2]
 │
-├── assets/                     # 【素材】MVP 阶段为空，规范见 assets/README.md
+├── assets/                     # 【素材】S1~S2 为空，规范见 assets/README.md
 │   └── sprites/
 │
 └── docs/
-    ├── STRUCTURE.md            # 本文件
+    ├── STRUCTURE.md            # 本文件：目录与分层契约
+    ├── SETUP.md                # 环境配置与运行手册
     └── prd/
         ├── 00-赛题原文.md
         ├── 01-PRD-主文档.md
         ├── 02-PRD-附录A-内部基建部署方案.md
-        └── 03-PLAN.md
+        └── 03-PLAN.md          # S1~S6 实施路线图
 ```
 
 ## 分层规则（不可违反）
@@ -78,12 +82,15 @@ server/  ──import──>  shared/  <──import──  client/
 
 ### 静态路由映射
 
-`server/index.js` 对外暴露三条静态路由：
+`server/index.js` 对外暴露三条静态路由（挂载顺序即匹配顺序，`/` 为兜底）：
 
 | URL 前缀 | 物理目录 |
 |---|---|
-| `/` | `client/`（`/` → `client/index.html`） |
 | `/shared/` | `shared/` |
 | `/assets/` | `assets/` |
+| `/` | `client/`（`/` → `client/index.html`） |
 
 因此客户端可直接 `import { TILE } from '/shared/constants.js'`。
+
+> `static.js` 内置目录穿越防护：`normalize` 后路径必须仍在挂载目录内，
+> 否则 `/shared/%2e%2e/.env` 之类的请求可读到仓库外任意文件。

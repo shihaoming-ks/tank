@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>坦克竞技场 · 通路自检</title>
+    <link rel="stylesheet" href="/styles/main.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <header class="panel-head">
+        <h1>坦克竞技场</h1>
+        <p class="subtitle">S1.1 · 端到端通路自检</p>
+      </header>
+
+      <section class="row">
+        <span class="label">连接状态</span>
+        <span class="value"><i id="status-dot" class="dot dot-pending"></i><span id="status">初始化…</span></span>
+      </section>
+
+      <section class="row">
+        <span class="label">共享参数</span>
+        <span class="value" id="meta">读取中…</span>
+      </section>
+
+      <button id="btn-echo" class="btn" disabled>发送 echo 测试</button>
+
+      <section class="log-wrap">
+        <div class="log-head">运行日志</div>
+        <div id="log" class="log"></div>
+      </section>
+
+      <footer class="hint">
+        本页仅用于验证「静态托管 + WebSocket 同源通路 + shared 双端共享」。<br />
+        大厅与对战界面将在 S1.2 / S1.3 接入。
+      </footer>
+    </main>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>

@@ -12,7 +12,7 @@
 环境要求：**Node.js ≥ 18**（推荐 22，见 `.nvmrc`）
 
 ```bash
-# 安装依赖
+# 安装依赖（快手内网需加 --registry https://npm.corp.kuaishou.com/）
 npm install
 
 # 启动（一条命令同时提供页面与 WebSocket 服务）
@@ -22,6 +22,8 @@ npm run dev
 浏览器打开 **http://localhost:8080**
 
 多人测试：**再开一个浏览器窗口**（或无痕窗口）访问同一地址，输入相同房间号即可加入同一局。
+
+> 详细环境说明、环境变量、常见问题排查见 **[docs/SETUP.md](docs/SETUP.md)**
 
 ---
 
@@ -113,6 +115,7 @@ cp .env.example .env
 
 | 文档 | 内容 |
 |---|---|
+| [docs/SETUP.md](docs/SETUP.md) | 环境配置与运行手册（含常见问题） |
 | [docs/STRUCTURE.md](docs/STRUCTURE.md) | 目录结构与分层契约 |
 | [docs/prd/01-PRD-主文档.md](docs/prd/01-PRD-主文档.md) | 完整产品需求 |
 | [docs/prd/02-PRD-附录A-内部基建部署方案.md](docs/prd/02-PRD-附录A-内部基建部署方案.md) | 内部基建部署方案 |
