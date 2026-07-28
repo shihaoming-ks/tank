@@ -43,6 +43,26 @@ export const S2C = {
   ECHO: 'echo',
 };
 
+/** 表现层事件种类。客户端据此播特效与写战报 */
+export const EVENT_KIND = {
+  /** 玩家加入房间 */
+  JOIN: 'join',
+  /** 玩家离开房间 */
+  LEAVE: 'leave',
+  /** 对局开始 */
+  START: 'start',
+  /** 开火 */
+  FIRE: 'fire',
+  /** 命中扣血 */
+  HIT: 'hit',
+  /** 击杀（目标 HP 归零） */
+  KILL: 'kill',
+  /** 复活 */
+  RESPAWN: 'respawn',
+  /** 房主移交 */
+  HOST: 'host',
+};
+
 /** 错误码。客户端据此决定提示文案与是否可重试 */
 export const ERR = {
   BAD_MESSAGE: 'BAD_MESSAGE',

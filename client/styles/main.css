@@ -478,6 +478,155 @@ h1 {
   font-weight: 500;
 }
 
+.game-foot {
+  width: 960px;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* ---------- 战报 ---------- */
+
+.feed-wrap {
+  width: 960px;
+  max-width: 100%;
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+}
+
+.feed-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg-dim);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.btn-mini {
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--fg-dim);
+  font-family: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.btn-mini:hover {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.feed {
+  margin: 0;
+  padding: 8px 12px;
+  list-style: none;
+  height: 116px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.feed-item {
+  display: flex;
+  gap: 10px;
+}
+
+.feed-time {
+  color: #4d5449;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.feed-text {
+  color: var(--fg-dim);
+  word-break: break-all;
+}
+
+/* 不同事件用色区分，扫一眼即可分辨类型 */
+.feed-kill .feed-text {
+  color: var(--red);
+}
+.feed-over .feed-text {
+  color: var(--amber);
+  font-weight: 500;
+}
+.feed-system .feed-text {
+  color: var(--green);
+}
+
+/* ---------- 结算面板 ---------- */
+
+.overlay-result {
+  border-color: var(--amber);
+  width: min(440px, calc(100% - 48px));
+}
+
+.over-reason {
+  margin: 0 0 6px;
+  color: var(--fg-dim);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+#over-title {
+  margin: 0 0 20px;
+  font-size: 24px;
+  letter-spacing: 0.08em;
+  color: var(--amber);
+}
+
+.score {
+  width: 100%;
+  margin-bottom: 20px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.score th {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg-dim);
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-align: right;
+}
+.score th:first-child {
+  text-align: left;
+}
+
+.score td {
+  padding: 8px;
+  border-bottom: 1px dashed var(--line);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.score td:first-child {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  text-align: left;
+}
+
+.score tr.is-winner td {
+  color: var(--amber);
+}
+
+.over-actions {
+  display: flex;
+  gap: 10px;
+}
+.over-actions .btn {
+  margin-top: 0;
+}
+
 /* ---------- 断连遮罩 ---------- */
 
 .overlay {

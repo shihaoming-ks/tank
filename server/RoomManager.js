@@ -113,6 +113,9 @@ export class RoomManager {
       case C2S.INPUT:
         this.handleInput(ws, msg);
         return true;
+      case C2S.FIRE:
+        this.handleFire(ws);
+        return true;
       default:
         return false;
     }
@@ -196,6 +199,8 @@ export class RoomManager {
       this.sendError(ws, ERR.NOT_ENOUGH_PLAYERS);
       return;
     }
+    // 已在对局中则忽略，避免重复点击把正在进行的对局重置
+    if (room.phase === PHASE.PLAYING) return;
 
     room.startGame();
   }
@@ -218,6 +223,13 @@ export class RoomManager {
     }
 
     ctx.room.setMoveIntent(ctx.player, dir);
+  }
+
+  /** 射击意图。同样高频，校验失败静默忽略；冷却由服务端裁决 */
+  handleFire(ws) {
+    const ctx = this.resolve(ws);
+    if (!ctx) return;
+    ctx.room.fire(ctx.player);
   }
 
   /** 连接断开时清理。与主动 leave 的区别仅在于日志 reason */

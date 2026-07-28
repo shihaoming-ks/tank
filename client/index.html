@@ -82,11 +82,46 @@
 
       <canvas id="canvas" class="canvas"></canvas>
 
-      <div class="controls-hint">
-        <span><b>W A S D</b> / <b>方向键</b> 移动</span>
-        <span><b>空格</b> 射击</span>
+      <div class="game-foot">
+        <div class="controls-hint">
+          <span><b>W A S D</b> / <b>方向键</b> 移动</span>
+          <span><b>空格</b> 射击</span>
+        </div>
+        <button id="btn-restart" class="btn-ghost" hidden>再来一局</button>
       </div>
+
+      <!-- 战报：记录进出房间、命中、击杀等事件 -->
+      <section class="feed-wrap">
+        <div class="feed-head">
+          <span>战报</span>
+          <button id="btn-feed-clear" class="btn-mini">清空</button>
+        </div>
+        <ul id="feed" class="feed"></ul>
+      </section>
     </main>
+
+    <!-- ========== 结算面板 ========== -->
+    <div id="overlay-over" class="overlay" hidden>
+      <div class="overlay-box overlay-result">
+        <p id="over-reason" class="over-reason">对局结束</p>
+        <h2 id="over-title">胜者</h2>
+        <table class="score">
+          <thead>
+            <tr>
+              <th>玩家</th>
+              <th>击杀</th>
+              <th>剩余血量</th>
+            </tr>
+          </thead>
+          <tbody id="score-body"></tbody>
+        </table>
+        <div class="over-actions">
+          <button id="btn-again" class="btn btn-primary">再来一局</button>
+          <button id="btn-back-lobby" class="btn">返回大厅</button>
+        </div>
+        <p id="over-hint" class="hint-text"></p>
+      </div>
+    </div>
 
     <!-- ========== 断连遮罩 ========== -->
     <div id="overlay-disconnect" class="overlay" hidden>

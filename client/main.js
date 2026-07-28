@@ -8,8 +8,9 @@
  *    绝不在本地推断或预测。
  */
 
-import { MATCH_DURATION_MS, PHASE, ROOM_MAX } from '/shared/constants.js';
+import { END_REASON, MATCH_DURATION_MS, PHASE, ROOM_MAX } from '/shared/constants.js';
 import { C2S, S2C, isValidRoomId, normalizeNickname } from '/shared/protocol.js';
+import { Feed } from './feed.js';
 import { InputController } from './input.js';
 import { Net } from './net.js';
 import { Renderer } from './render.js';
@@ -45,6 +46,17 @@ const els = {
   canvas: $('#canvas'),
   hudPlayers: $('#hud-players'),
   hudTimer: $('#hud-timer'),
+  feed: $('#feed'),
+  btnFeedClear: $('#btn-feed-clear'),
+  btnRestart: $('#btn-restart'),
+  // 结算
+  overlayOver: $('#overlay-over'),
+  overTitle: $('#over-title'),
+  overReason: $('#over-reason'),
+  scoreBody: $('#score-body'),
+  btnAgain: $('#btn-again'),
+  btnBackLobby: $('#btn-back-lobby'),
+  overHint: $('#over-hint'),
   // 遮罩
   overlay: $('#overlay-disconnect'),
   disconnectReason: $('#disconnect-reason'),
@@ -57,11 +69,14 @@ const state = {
   room: null,
   /** 最新快照。渲染循环读它，收到新的就整体替换 */
   snapshot: null,
+  /** 最近一次对局结算结果 */
+  result: null,
 };
 
 const net = new Net();
 const renderer = new Renderer(els.canvas);
 const input = new InputController(net);
+const feed = new Feed(els.feed);
 
 // ---------------- 视图切换 ----------------
 
@@ -69,8 +84,9 @@ function showView(name) {
   for (const [key, el] of Object.entries(els.views)) {
     el.hidden = key !== name;
   }
-  // 只在对战视图接收键盘，避免在大厅输入昵称时误触发移动
-  input.setEnabled(name === 'game');
+  // 只在对战视图接收键盘，避免在大厅输入昵称时误触发移动。
+  // 结算面板打开时也应停止响应，否则玩家会对着已结束的对局操作
+  input.setEnabled(name === 'game' && els.overlayOver.hidden);
   // 切入对战视图后立即画一帧，不等下一个快照到达
   if (name === 'game') drawFrame();
 }
@@ -106,9 +122,17 @@ els.nickname.addEventListener('change', () => {
 // ---------------- 房间渲染 ----------------
 
 function renderRoom(room) {
+  const prevPhase = state.room?.phase;
   state.room = room;
   state.roomId = room.roomId;
   renderer.setPlayers(room.players);
+
+  // 新一局开始：清掉上一局的结算面板与残留特效
+  if (prevPhase !== PHASE.PLAYING && room.phase === PHASE.PLAYING) {
+    state.result = null;
+    renderer.clearEffects();
+    hideResult();
+  }
 
   els.roomId.textContent = room.roomId;
   els.gameRoomId.textContent = room.roomId;
@@ -155,8 +179,21 @@ function renderRoom(room) {
 
   renderHud(room);
 
-  // 阶段切换完全由服务端驱动
-  showView(room.phase === PHASE.PLAYING ? 'game' : 'room');
+  // 阶段切换完全由服务端驱动。
+  // OVER 阶段保持在战场视图：结算面板叠加在战场之上，
+  // 让玩家能看到最后一刻的局面，而不是被弹回等待区
+  const onField = room.phase === PHASE.PLAYING || room.phase === PHASE.OVER;
+  showView(onField ? 'game' : 'room');
+
+  // 结算面板开着时，房主/人数变化会影响"再来一局"是否可点
+  if (!els.overlayOver.hidden && state.result) showResult(state.result);
+
+  // 结算后房主可用底部按钮直接开新局，无需重开面板
+  els.btnRestart.hidden = !(
+    room.phase === PHASE.OVER &&
+    room.hostId === state.selfId &&
+    room.players.length >= (room.minPlayers ?? 2)
+  );
 }
 
 function tag(text, cls) {
@@ -280,6 +317,20 @@ net.on(S2C.SNAPSHOT, (msg) => {
   drawFrame();
 });
 
+net.on(S2C.EVENT, (msg) => {
+  const events = msg.events ?? [];
+  // 特效与战报是同一批事件的两种消费方式
+  renderer.handleEvents(events);
+  feed.handleEvents(events);
+  drawFrame();
+});
+
+net.on(S2C.OVER, (msg) => {
+  state.result = msg;
+  feed.handleOver(msg);
+  showResult(msg);
+});
+
 net.on(S2C.ERROR, (msg) => {
   console.warn('[app] 服务端错误', msg.code, msg.message);
   showError(currentErrorEl(), msg.message);
@@ -289,6 +340,69 @@ net.on(S2C.SHUTDOWN, (msg) => {
   els.disconnectReason.textContent = msg.message;
   els.overlay.hidden = false;
 });
+
+// ---------------- 结算 ----------------
+
+const REASON_TEXT = {
+  [END_REASON.LAST_SURVIVOR]: '仅剩一名存活玩家',
+  [END_REASON.TIMEOUT]: '时间到',
+  [END_REASON.ABORTED]: '玩家不足，对局中止',
+};
+
+function showResult(result) {
+  els.overReason.textContent = REASON_TEXT[result.reason] ?? '对局结束';
+
+  if (result.reason === END_REASON.ABORTED) {
+    els.overTitle.textContent = '对局中止';
+    els.overTitle.style.color = '';
+  } else if (result.winnerName) {
+    const isSelf = result.winnerId === state.selfId;
+    els.overTitle.textContent = isSelf ? '你赢了' : `${result.winnerName} 获胜`;
+    els.overTitle.style.color = isSelf ? 'var(--green)' : 'var(--amber)';
+  } else {
+    els.overTitle.textContent = '平局';
+    els.overTitle.style.color = '';
+  }
+
+  els.scoreBody.innerHTML = '';
+  for (const s of result.scores ?? []) {
+    const tr = document.createElement('tr');
+    if (s.id === result.winnerId) tr.className = 'is-winner';
+
+    const name = document.createElement('td');
+    const dot = document.createElement('i');
+    dot.className = 'swatch';
+    dot.style.background = s.color;
+    name.append(dot, document.createTextNode(s.nickname));
+    if (s.id === state.selfId) name.append(tag('你', 'tag-self'));
+
+    const kills = document.createElement('td');
+    kills.textContent = String(s.kills);
+
+    const hp = document.createElement('td');
+    hp.textContent = s.alive ? String(s.hp) : '淘汰';
+
+    tr.append(name, kills, hp);
+    els.scoreBody.append(tr);
+  }
+
+  // 少于 2 人时无法直接再来一局，需等其他玩家加入
+  const canAgain = (state.room?.players?.length ?? 0) >= 2;
+  els.btnAgain.disabled = !canAgain;
+  els.overHint.textContent = canAgain
+    ? state.room?.hostId === state.selfId
+      ? ''
+      : '仅房主可以开始新对局'
+    : '至少需要 2 名玩家才能开始新对局';
+
+  els.overlayOver.hidden = false;
+  input.setEnabled(false);
+}
+
+function hideResult() {
+  els.overlayOver.hidden = true;
+  if (!els.views.game.hidden) input.setEnabled(true);
+}
 
 // ---------------- 交互 ----------------
 
@@ -335,13 +449,30 @@ els.nickname.addEventListener('keydown', (e) => {
 
 els.btnStart.addEventListener('click', () => net.send(C2S.START, {}));
 
+/** 请求开新一局。服务端会校验房主身份与人数 */
+function requestRestart() {
+  net.send(C2S.START, {});
+}
+els.btnAgain.addEventListener('click', requestRestart);
+els.btnRestart.addEventListener('click', requestRestart);
+
+els.btnBackLobby.addEventListener('click', () => {
+  hideResult();
+  leaveRoom();
+});
+
+els.btnFeedClear.addEventListener('click', () => feed.clear());
+
 function leaveRoom() {
   net.send(C2S.LEAVE, {});
   state.selfId = null;
   state.roomId = null;
   state.room = null;
   state.snapshot = null;
+  state.result = null;
+  renderer.clearEffects();
   els.roomIdInput.value = '';
+  els.overlayOver.hidden = true;
   showView('lobby');
 }
 els.btnLeave.addEventListener('click', leaveRoom);

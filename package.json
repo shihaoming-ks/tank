@@ -11,9 +11,10 @@
     "dev": "node server/index.js",
     "start": "node server/index.js",
     "test": "node --test test/",
-    "smoke": "npm run smoke:room && npm run smoke:move",
+    "smoke": "npm run smoke:room && npm run smoke:move && npm run smoke:combat",
     "smoke:room": "node scripts/smoke-room.js",
-    "smoke:move": "node scripts/smoke-move.js"
+    "smoke:move": "node scripts/smoke-move.js",
+    "smoke:combat": "node scripts/smoke-combat.js"
   },
   "keywords": [
     "game",

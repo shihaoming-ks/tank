@@ -33,7 +33,7 @@ npm run dev
 |---|---|
 | `npm run dev` | 启动服务（开发） |
 | `npm start` | 启动服务（生产） |
-| `npm run smoke` | 端到端冒烟测试 76 项（需先启动服务） |
+| `npm run smoke` | 端到端冒烟测试 117 项（需先启动服务） |
 | `npm test` | 运行物理与规则单元测试 |
 
 ---

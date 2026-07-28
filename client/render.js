@@ -42,6 +42,14 @@ export class Renderer {
     /** 玩家 id → 元信息（昵称、颜色），来自 room 消息 */
     this.playerMeta = new Map();
     this.selfId = null;
+    /**
+     * 瞬时特效列表。由 event 消息驱动，按时间衰减后自动移除。
+     * 特效纯属表现层，不影响任何状态。
+     * @type {Array<object>}
+     */
+    this.effects = [];
+    /** playerId → 命中闪白截止时间 */
+    this.flash = new Map();
 
     this.setupHiDPI();
   }
@@ -73,6 +81,35 @@ export class Renderer {
   }
 
   /**
+   * 接收服务端事件并转为视觉特效。
+   * 这是 event 消息在渲染层的唯一入口。
+   */
+  handleEvents(events) {
+    const now = performance.now();
+    for (const ev of events) {
+      if (ev.kind === 'hit') {
+        // 撞墙用小火花，命中坦克用较大爆点并让目标闪白
+        this.effects.push({
+          type: ev.wall ? 'spark' : 'burst',
+          x: ev.x,
+          y: ev.y,
+          born: now,
+          life: ev.wall ? 220 : 340,
+        });
+        if (ev.targetId) this.flash.set(ev.targetId, now + 150);
+      } else if (ev.kind === 'kill') {
+        this.effects.push({ type: 'explosion', x: ev.x, y: ev.y, born: now, life: 620 });
+      }
+    }
+  }
+
+  /** 清空特效。用于开新一局，避免上局残留 */
+  clearEffects() {
+    this.effects = [];
+    this.flash.clear();
+  }
+
+  /**
    * 绘制一帧。
    * @param {object} snap 服务端快照
    */
@@ -86,6 +123,63 @@ export class Renderer {
       for (const b of snap.bullets ?? []) this.drawBullet(ctx, b);
       for (const t of snap.tanks ?? []) this.drawTank(ctx, t);
     }
+    this.drawEffects(ctx);
+  }
+
+  /**
+   * 绘制并回收瞬时特效。
+   * 用 performance.now 而非快照帧号驱动：特效必须按真实时间衰减，
+   * 否则网络抖动会让爆炸忽快忽慢。
+   */
+  drawEffects(ctx) {
+    const now = performance.now();
+    const alive = [];
+
+    for (const fx of this.effects) {
+      const p = (now - fx.born) / fx.life;
+      if (p >= 1) continue;
+      alive.push(fx);
+
+      ctx.save();
+      if (fx.type === 'spark') {
+        ctx.globalAlpha = 1 - p;
+        ctx.fillStyle = '#cfd6c4';
+        const r = 2 + p * 5;
+        ctx.beginPath();
+        ctx.arc(fx.x, fx.y, r, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (fx.type === 'burst') {
+        ctx.globalAlpha = 1 - p;
+        ctx.strokeStyle = '#ffd98a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(fx.x, fx.y, 4 + p * 14, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (fx.type === 'explosion') {
+        // 双层扩散圆环 + 中心亮斑，纯几何实现，零素材
+        ctx.globalAlpha = (1 - p) * 0.9;
+        ctx.strokeStyle = '#ff8f4d';
+        ctx.lineWidth = 3 * (1 - p) + 1;
+        ctx.beginPath();
+        ctx.arc(fx.x, fx.y, 6 + p * 34, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.globalAlpha = (1 - p) * 0.55;
+        ctx.strokeStyle = '#ffe9b0';
+        ctx.beginPath();
+        ctx.arc(fx.x, fx.y, 3 + p * 20, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.globalAlpha = Math.max(0, 1 - p * 2.4);
+        ctx.fillStyle = '#fff6df';
+        ctx.beginPath();
+        ctx.arc(fx.x, fx.y, 9 * (1 - p), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    this.effects = alive;
   }
 
   drawGround(ctx) {
@@ -127,7 +221,13 @@ export class Renderer {
 
   drawTank(ctx, tank) {
     const meta = this.playerMeta.get(tank.id);
-    const color = tank.alive ? (meta?.color ?? '#888') : PALETTE.deadTank;
+    const flashUntil = this.flash.get(tank.id) ?? 0;
+    const isFlashing = performance.now() < flashUntil;
+
+    let color = tank.alive ? (meta?.color ?? '#888') : PALETTE.deadTank;
+    // 命中瞬间整车闪白，是最直接的受击反馈
+    if (isFlashing && tank.alive) color = '#ffffff';
+
     const half = TANK_SIZE / 2;
 
     ctx.save();
@@ -197,9 +297,10 @@ export class Renderer {
 
   drawBullet(ctx, b) {
     ctx.save();
-    // 外发光让高速小物体更易被察觉
-    ctx.shadowColor = PALETTE.bullet;
-    ctx.shadowBlur = 6;
+    // 外发光让高速小物体更易被察觉；用发射者颜色便于分辨威胁来源
+    const tint = b.color ?? PALETTE.bullet;
+    ctx.shadowColor = tint;
+    ctx.shadowBlur = 8;
     ctx.fillStyle = PALETTE.bullet;
     ctx.beginPath();
     ctx.arc(b.x, b.y, BULLET_SIZE / 2, 0, Math.PI * 2);
