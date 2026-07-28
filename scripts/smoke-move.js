@@ -344,8 +344,8 @@ async function main() {
   await sleep(400);
   const tanksAfterLeave = b.snap?.tanks ?? [];
   check(
-    'A 已从快照中移除',
-    !tanksAfterLeave.some((t) => t.id === idA),
+    '断线宽限期内 A 仍保留在快照中',
+    tanksAfterLeave.some((t) => t.id === idA),
     `剩余 ${tanksAfterLeave.length} 辆`
   );
 

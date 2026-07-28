@@ -72,6 +72,7 @@ const state = {
   snapshot: null,
   /** 最近一次对局结算结果 */
   result: null,
+  spectator: false,
 };
 
 const net = new Net();
@@ -102,7 +103,7 @@ function showView(name) {
 function syncInputEnabled() {
   const onGame = !els.views.game.hidden;
   const canPlay = state.room?.phase === PHASE.PLAYING;
-  input.setEnabled(onGame && els.overlayOver.hidden && canPlay);
+  input.setEnabled(onGame && els.overlayOver.hidden && canPlay && !state.spectator);
 }
 
 /** 错误提示（3.5s 后自动消失） */
@@ -142,6 +143,22 @@ function toast(text, tone = 'error') {
  * 身份完全由服务端分配，否则同浏览器多标签页会串号。
  */
 const NICK_KEY = 'tank:nickname';
+// 关闭标签页后仍可恢复；主动离开时会显式清除。
+const RESUME_KEY = 'tank:resume';
+
+function loadResume() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(RESUME_KEY) ?? 'null');
+    return saved && typeof saved.roomId === 'string' && typeof saved.resumeToken === 'string' ? saved : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveResume(msg) {
+  if (!msg.resumeToken || !msg.roomId) return;
+  localStorage.setItem(RESUME_KEY, JSON.stringify({ roomId: msg.roomId, resumeToken: msg.resumeToken }));
+}
 els.nickname.value = localStorage.getItem(NICK_KEY) ?? '';
 els.nickname.addEventListener('change', () => {
   localStorage.setItem(NICK_KEY, els.nickname.value.trim());
@@ -184,6 +201,7 @@ function renderRoom(room) {
     const tags = document.createElement('span');
     tags.className = 'roster-tags';
     if (p.id === room.hostId) tags.append(tag('房主', 'tag-host'));
+    if (p.spectator) tags.append(tag('观战', 'tag-spectator'));
     if (p.id === state.selfId) tags.append(tag('你', 'tag-self'));
 
     li.append(swatch, name, tags);
@@ -259,7 +277,12 @@ function renderHud(room) {
 
     const hp = document.createElement('span');
     hp.className = 'hud-hp';
-    hp.dataset.playerId = p.id;
+    if (p.spectator) {
+      box.classList.add('is-spectator');
+      hp.textContent = '观战';
+    } else {
+      hp.dataset.playerId = p.id;
+    }
 
     box.append(swatch, name, hp);
     els.hudPlayers.append(box);
@@ -353,6 +376,8 @@ net.onStatus = (status, detail) => {
 net.on(S2C.JOINED, (msg) => {
   state.selfId = msg.selfId;
   state.roomId = msg.roomId;
+  state.spectator = Boolean(msg.spectator);
+  saveResume(msg);
   renderer.setSelfId(msg.selfId);
   console.info('[app] 已加入房间', msg.roomId, '身份', msg.selfId);
 });
@@ -443,7 +468,7 @@ function showResult(result) {
     kills.textContent = String(s.kills);
 
     const hp = document.createElement('td');
-    hp.textContent = s.alive ? String(s.hp) : '淘汰';
+    hp.textContent = s.spectator ? '观战' : s.alive ? String(s.hp) : '淘汰';
 
     tr.append(name, kills, hp);
     els.scoreBody.append(tr);
@@ -564,6 +589,8 @@ function leaveRoom() {
   state.room = null;
   state.snapshot = null;
   state.result = null;
+  state.spectator = false;
+  localStorage.removeItem(RESUME_KEY);
   renderer.clearEffects();
   els.roomIdInput.value = '';
   els.overlayOver.hidden = true;
@@ -593,6 +620,8 @@ async function main() {
 
   try {
     await net.connect();
+    const resume = loadResume();
+    if (resume) net.send(C2S.RESUME, resume);
   } catch (err) {
     console.error('[app] 连接失败', err);
   }

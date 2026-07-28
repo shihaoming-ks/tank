@@ -200,6 +200,8 @@ export const ROOM_ID_LEN = 4;
 export const HEARTBEAT_MS = 25_000;
 /** 断线判定超时（ms）。超过此时长无响应则视为掉线 */
 export const DISCONNECT_TIMEOUT_MS = 3_000;
+/** 断线后保留玩家权威状态的时间；期限内可凭 resumeToken 恢复同一坦克 */
+export const RECONNECT_GRACE_MS = 20_000;
 
 // ---------- 玩家外观 ----------
 /** 玩家配色，按加入顺序分配。索引即 slot */

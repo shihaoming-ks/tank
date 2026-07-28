@@ -252,13 +252,13 @@ async function main() {
   const g = new Client('G');
   await g.connect();
   g.send(C2S.JOIN, { nickname: '高尔夫', roomId });
-  check('对局中拒绝加入', (await g.wait(S2C.ERROR))?.code === 'ROOM_IN_GAME');
+  const joinedG = await g.wait(S2C.JOINED);
+  check('对局中以观战者身份加入', joinedG?.spectator === true);
+  check('观战者收到当前快照', Boolean(await g.wait(S2C.SNAPSHOT)));
 
   // ---------- 11. 房间回收 ----------
   console.log('\n11. 房间空置自动回收');
-  b.close();
-  f.close();
-  for (const cl of [d, e, g]) cl.close();
+  for (const cl of [b, f, d, e, g]) { cl.send(C2S.LEAVE, {}); cl.close(); }
   await sleep(400);
 
   const after = await health();

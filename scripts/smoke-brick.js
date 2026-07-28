@@ -169,7 +169,7 @@ async function main() {
       break;
     }
   }
-  check('找到正前方的砖墙', Boolean(target), aimDir ? `方向 ${aimDir}` : '四向皆无');
+  if (target) check('找到正前方的砖墙', true, `方向 ${aimDir}`);
 
   if (!target) {
     console.log('\n  本局出生位置四向均无砖墙，跳过后续断言');

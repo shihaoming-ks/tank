@@ -22,6 +22,7 @@ import {
   RAM_COOLDOWN_MS,
   RAM_DAMAGE,
   RESPAWN_INVULN_MS,
+  RECONNECT_GRACE_MS,
   ROOM_MAX,
   ROOM_MIN,
   MAP_W,
@@ -124,15 +125,15 @@ export class Room {
   }
 
   get size() {
-    return this.players.size;
+    return [...this.players.values()].filter((p) => !p.spectator).length;
   }
 
   get isFull() {
-    return this.players.size >= ROOM_MAX;
+    return this.size >= ROOM_MAX;
   }
 
   get canStart() {
-    return this.players.size >= ROOM_MIN;
+    return this.size >= ROOM_MIN;
   }
 
   /**
@@ -141,7 +142,7 @@ export class Room {
    * 否则玩家中途退出再进会出现两人同色。
    */
   allocSlot() {
-    const used = new Set([...this.players.values()].map((p) => p.slot));
+    const used = new Set([...this.players.values()].filter((p) => !p.spectator).map((p) => p.slot));
     for (let i = 0; i < ROOM_MAX; i++) {
       if (!used.has(i)) return i;
     }
@@ -152,16 +153,20 @@ export class Room {
    * 加入房间。调用方需先确保未满。
    * @returns {object} player
    */
-  addPlayer(ws, nickname) {
-    const slot = this.allocSlot();
-    const spawn = this.spawns[slot];
+  addPlayer(ws, nickname, resumeToken, spectator = false) {
+    const slot = spectator ? -1 : this.allocSlot();
+    const spawn = this.spawns[Math.max(0, slot)] ?? this.spawns[0];
 
     const player = {
       id: `p${++playerSeq}`,
       nickname,
       slot,
-      color: COLORS[slot],
+      color: spectator ? '#94a3b8' : COLORS[slot],
+      spectator,
       ws,
+      resumeToken,
+      connected: true,
+      reconnectTimer: null,
       joinedAt: Date.now(),
 
       // ---- 坦克状态（权威） ----
@@ -182,7 +187,7 @@ export class Room {
     this.players.set(player.id, player);
     this.needMap.add(player.id);
     // 首个加入者成为房主
-    if (!this.hostId) this.hostId = player.id;
+    if (!this.hostId && !spectator) this.hostId = player.id;
 
     logger.info({
       evt: 'player_join',
@@ -194,12 +199,43 @@ export class Room {
     });
 
     // 战报：先广播给已在房间的玩家（此时新玩家已在 players 中，也会收到）
-    this.pushEvent({ kind: EVENT_KIND.JOIN, actor: nickname, color: player.color });
+    if (!spectator) this.pushEvent({ kind: EVENT_KIND.JOIN, actor: nickname, color: player.color });
     this.flushEvents();
 
     return player;
   }
 
+  /** 断线期间保留玩家的权威状态，超时后才作为真正离开处理。 */
+  disconnectPlayer(playerId) {
+    const player = this.players.get(playerId);
+    if (!player) return;
+    if (this.phase !== PHASE.PLAYING && this.phase !== PHASE.COUNTDOWN) {
+      this.removePlayer(playerId, 'disconnect');
+      return;
+    }
+    player.connected = false;
+    player.ws = null;
+    player.moveDir = null;
+    clearTimeout(player.reconnectTimer);
+    player.reconnectTimer = setTimeout(() => {
+      if (!player.connected) this.removePlayer(playerId, 'disconnect');
+    }, RECONNECT_GRACE_MS);
+    this.broadcastRoom();
+  }
+
+  /** 将新的 WebSocket 绑定回断线前的同一玩家实体。 */
+  resumePlayer(playerId, ws) {
+    const player = this.players.get(playerId);
+    if (!player || player.connected) return null;
+    clearTimeout(player.reconnectTimer);
+    player.reconnectTimer = null;
+    player.connected = true;
+    player.ws = ws;
+    this.needMap.add(player.id);
+    this.broadcastRoom();
+    this.broadcastSnapshot(Date.now());
+    return player;
+  }
   /**
    * 移除玩家。处理房主移交与房间空置。
    * @param {string} playerId
@@ -209,6 +245,7 @@ export class Room {
     const player = this.players.get(playerId);
     if (!player) return;
 
+    clearTimeout(player.reconnectTimer);
     this.players.delete(playerId);
     this.needMap.delete(playerId);
     // 离开者遗留的子弹必须清除，否则会出现“幽灵子弹”继续伤害其他人
@@ -294,6 +331,7 @@ export class Room {
 
     let idx = 0;
     for (const p of this.players.values()) {
+      if (p.spectator) continue;
       const spawn = shuffled[idx++ % shuffled.length];
       p.x = spawn.x;
       p.y = spawn.y;
@@ -357,7 +395,7 @@ export class Room {
 
     this.tick++;
 
-    const tanks = [...this.players.values()];
+    const tanks = [...this.players.values()].filter((p) => !p.spectator);
 
     // ---- 0. 倒计时阶段：只广播画面，不推进任何游戏逻辑 ----
     if (this.phase === PHASE.COUNTDOWN) {
@@ -602,7 +640,7 @@ export class Room {
     // 应立即中止而非等倒计时走完再开一局空对局
     if (this.phase !== PHASE.PLAYING && this.phase !== PHASE.COUNTDOWN) return false;
 
-    const all = [...this.players.values()];
+    const all = [...this.players.values()].filter((p) => !p.spectator);
     const alive = all.filter((p) => p.alive);
 
     // 规则 3：人数不足 → 中止。
@@ -654,11 +692,14 @@ export class Room {
           color: p.color,
           hp: p.hp,
           kills: p.kills,
+        connected: p.connected,
+        spectator: p.spectator,
           deaths: p.deaths,
           alive: p.alive,
+          spectator: p.spectator,
         }))
         // 击杀降序，其次剩余血量降序，便于直接作为排名展示
-        .sort((a, b) => b.kills - a.kills || b.hp - a.hp),
+        .sort((a, b) => Number(a.spectator) - Number(b.spectator) || b.kills - a.kills || b.hp - a.hp),
     };
 
     logger.info({
@@ -687,7 +728,7 @@ export class Room {
   setMoveIntent(player, dir) {
     // 倒计时期间禁止移动：此时 phase 为 COUNTDOWN 而非 PLAYING，
     // 天然被此判断拦下，无需额外分支
-    if (this.phase !== PHASE.PLAYING || !player.alive) return;
+    if (this.phase !== PHASE.PLAYING || player.spectator || !player.alive) return;
     player.moveDir = dir;
     if (dir) player.dir = dir;
   }
@@ -695,7 +736,7 @@ export class Room {
   /** 处理射击意图。冷却完全由服务端裁决，客户端只需无脑上报 */
   fire(player) {
     // 同 setMoveIntent：倒计时阶段 phase 不是 PLAYING，开火自动无效
-    if (this.phase !== PHASE.PLAYING || !player.alive) return;
+    if (this.phase !== PHASE.PLAYING || player.spectator || !player.alive) return;
 
     const now = Date.now();
     if (now - player.lastFireAt < FIRE_COOLDOWN_MS) return;
@@ -758,6 +799,8 @@ export class Room {
         hp: p.hp,
         alive: p.alive,
         kills: p.kills,
+        connected: p.connected,
+        spectator: p.spectator,
       })),
     };
   }
@@ -772,7 +815,7 @@ export class Room {
       t: this.tick,
       m: this.matchId,
       timeLeft: Math.max(0, MATCH_DURATION_MS - (now - this.startedAt)),
-      tanks: [...this.players.values()].map((p) => ({
+      tanks: [...this.players.values()].filter((p) => !p.spectator).map((p) => ({
         id: p.id,
         x: Math.round(p.x),
         y: Math.round(p.y),
@@ -798,6 +841,7 @@ export class Room {
     const payload = encode(type, data);
     for (const player of this.players.values()) {
       // 单个连接发送失败不应影响其他玩家
+      if (!player.connected || !player.ws) continue;
       try {
         player.ws.send(payload);
       } catch (err) {
@@ -822,6 +866,7 @@ export class Room {
     const shared = this.needMap.size < this.players.size ? encode(S2C.SNAPSHOT, base) : null;
 
     for (const player of this.players.values()) {
+      if (!player.connected || !player.ws) continue;
       try {
         if (this.needMap.has(player.id)) {
           player.ws.send(encode(S2C.SNAPSHOT, { ...base, map: this.grid }));
