@@ -9,7 +9,7 @@
 
 import { WebSocket } from 'ws';
 import { C2S, S2C, decode, encode } from '../shared/protocol.js';
-import { COLS, MAP_H, MAP_W, ROWS, TANK_SIZE, TILE } from '../shared/constants.js';
+import { BLOCKING_TILES, COLS, MAP_H, MAP_W, ROWS, TANK_SIZE, TILE, TILE_TYPE } from '../shared/constants.js';
 
 const URL = process.env.WS_URL || 'ws://localhost:8080/ws';
 
@@ -123,6 +123,35 @@ async function main() {
   const mapRepeats = a.snapshots.filter((s) => s.map).length;
   check('地图仅下发一次', mapRepeats === 1, `出现 ${mapRepeats} 次`);
 
+  // ---------- 1b. 图块类型与生成比例 ----------
+  console.log('\n1b. 图块类型与生成比例');
+  const stat = { empty: 0, border: 0, brick: 0, steel: 0, other: 0 };
+  for (const row of a.map) {
+    for (const t of row) {
+      if (t === TILE_TYPE.EMPTY) stat.empty++;
+      else if (t === TILE_TYPE.BORDER) stat.border++;
+      else if (t === TILE_TYPE.BRICK) stat.brick++;
+      else if (t === TILE_TYPE.STEEL) stat.steel++;
+      else stat.other++;
+    }
+  }
+  check('无未知图块类型', stat.other === 0, `${stat.other} 个`);
+
+  // 边界应恰好是外围一圈
+  const expectBorder = COLS * 2 + (ROWS - 2) * 2;
+  check('边界为完整外围一圈', stat.border === expectBorder, `${stat.border} / ${expectBorder}`);
+
+  // 边界与内部障碍必须是不同类型，便于后续替换美术素材
+  const inner = stat.brick + stat.steel;
+  check('存在内部障碍', inner > 0, `${inner} 格`);
+  check('内部障碍与边界类型不同', TILE_TYPE.BRICK !== TILE_TYPE.BORDER && TILE_TYPE.STEEL !== TILE_TYPE.BORDER);
+  check('内部同时存在砖墙与钢块', stat.brick > 0 && stat.steel > 0, `砖${stat.brick} 钢${stat.steel}`);
+
+  // 填充比例应接近设定值（允许区间，因块状投放与安全区裁剪有偏差）
+  const innerArea = (COLS - 2) * (ROWS - 2);
+  const ratio = inner / innerArea;
+  check('障碍比例在合理区间', ratio > 0.1 && ratio < 0.28, `${(ratio * 100).toFixed(1)}%`);
+
   // ---------- 2. 出生点合法性 ----------
   console.log('\n2. 出生点');
   const spawnA = a.tank(idA);
@@ -146,7 +175,7 @@ async function main() {
     const r0 = Math.floor((t.y - half) / TILE);
     const r1 = Math.floor((t.y + half - 1) / TILE);
     for (let r = r0; r <= r1; r++) {
-      for (let c = c0; c <= c1; c++) if (a.map[r]?.[c] === 1) return true;
+      for (let c = c0; c <= c1; c++) if (BLOCKING_TILES.has(a.map[r]?.[c])) return true;
     }
     return false;
   };

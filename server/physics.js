@@ -17,10 +17,10 @@ import {
   TANK_SIZE,
   TILE,
 } from '../shared/constants.js';
-import { TILE_TYPE } from './map.js';
+import { isBlocking } from './map.js';
 
 /**
- * 判断以 (cx, cy) 为中心、边长 size 的正方形是否与任何墙体重叠。
+ * 判断以 (cx, cy) 为中心、边长 size 的正方形是否与任何障碍重叠。
  *
  * 只检查该正方形覆盖到的格子（最多 4 个），而非遍历全图。
  *
@@ -36,9 +36,9 @@ export function hitsWall(grid, cx, cy, size) {
 
   for (let r = r0; r <= r1; r++) {
     for (let c = c0; c <= c1; c++) {
-      // 越界视为墙，双重保险
+      // 越界视为障碍，双重保险
       if (grid[r]?.[c] === undefined) return true;
-      if (grid[r][c] === TILE_TYPE.WALL) return true;
+      if (isBlocking(grid[r][c])) return true;
     }
   }
   return false;

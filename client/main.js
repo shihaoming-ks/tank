@@ -504,7 +504,7 @@ function requestRestart() {
   }
 
   // 给出即时反馈，避免用户以为没点到而反复点击
-  toast('正在开始新对局…', 'ok');
+  toast('已开始新游戏', 'ok');
   net.send(C2S.START, {});
 }
 els.btnAgain.addEventListener('click', requestRestart);

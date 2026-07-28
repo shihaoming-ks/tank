@@ -48,6 +48,10 @@ export class Room {
     this.createdAt = Date.now();
 
     // ---- 世界状态 ----
+    /**
+     * 地图每局随机生成。构造时先生成一张，供等待区玩家预览。
+     * @type {number[][]}
+     */
     this.grid = createMap();
     this.spawns = getSpawnPoints();
     /** @type {Array<object>} 活跃子弹 */
@@ -223,7 +227,7 @@ export class Room {
 
   // ---------------- 对局生命周期 ----------------
 
-  /** 开局：重置全部坦克状态并启动 tick 循环 */
+  /** 开局：重新生成地图、重置全部坦克状态并启动 tick 循环 */
   startGame() {
     this.phase = PHASE.PLAYING;
     // 注意：故意不重置 this.tick（原因见 constructor 中的说明），
@@ -233,6 +237,13 @@ export class Room {
     this.bullets = [];
     this.pendingEvents = [];
     this.result = null;
+
+    // 每局重新生成地图，提升重复对战的新鲜感
+    this.grid = createMap();
+    const problems = validateMap(this.grid);
+    if (problems.length) {
+      logger.error({ evt: 'map_invalid', roomId: this.id, problems });
+    }
 
     for (const p of this.players.values()) {
       const spawn = this.spawns[p.slot];
@@ -246,7 +257,7 @@ export class Room {
       p.lastFireAt = 0;
       p.kills = 0;
       p.deaths = 0;
-      // 重新下发地图：客户端可能是新加入的
+      // 地图每局重新生成，必须重新下发给所有玩家
       this.needMap.add(p.id);
     }
 

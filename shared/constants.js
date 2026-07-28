@@ -46,6 +46,43 @@ export const RESPAWN_INVULN_MS = 2000;
 /** 单局时限（ms） */
 export const MATCH_DURATION_MS = 180_000;
 
+// ---------- 图块类型 ----------
+/**
+ * 图块类型。刻意区分边界与内部障碍，便于后续替换为不同美术素材：
+ *   BORDER 用外围钢墙贴图，BRICK/STEEL 用可辨识的内部障碍贴图。
+ * 数值即渲染层的贴图索引依据，不要随意调整已有值。
+ */
+export const TILE_TYPE = {
+  /** 空地，可通行 */
+  EMPTY: 0,
+  /** 地图外围边界（不可破坏，视觉上应最厚重） */
+  BORDER: 1,
+  /** 内部砖墙（阻挡移动与子弹） */
+  BRICK: 2,
+  /** 内部钢块（阻挡移动与子弹，视觉上更硬质） */
+  STEEL: 3,
+};
+
+/** 所有阻挡类图块。碰撞层据此判断，新增类型只需加进这里 */
+export const BLOCKING_TILES = new Set([TILE_TYPE.BORDER, TILE_TYPE.BRICK, TILE_TYPE.STEEL]);
+
+// ---------- 地图生成 ----------
+/**
+ * 内部障碍占可用区域的目标比例。
+ * 0.18 是反复权衡的结果：低于 0.12 战场过于空旷、缺少掩体；
+ * 高于 0.25 通道变窄，坦克容易被逼在死角。
+ */
+export const MAP_FILL_RATIO = 0.18;
+
+/** 内部障碍中钢块所占比例，其余为砖墙 */
+export const MAP_STEEL_RATIO = 0.3;
+
+/**
+ * 出生点周围的安全半径（单位：格）。
+ * 该范围内不生成任何障碍，保证开局有活动空间且不会被瞬间围死。
+ */
+export const SPAWN_SAFE_RADIUS = 2;
+
 // ---------- 房间 ----------
 /** 开局最少人数 */
 export const ROOM_MIN = 2;

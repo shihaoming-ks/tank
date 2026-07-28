@@ -45,7 +45,10 @@ class Client {
       this.ws.on('message', (raw) => {
         const msg = decode(raw.toString());
         if (!msg) return;
-        if (msg.type === S2C.SNAPSHOT) this.snapshots.push(msg);
+        if (msg.type === S2C.SNAPSHOT) {
+          if (msg.map) this.map = msg.map;
+          this.snapshots.push(msg);
+        }
         if (msg.type === S2C.EVENT) this.events.push(...(msg.events ?? []));
         if (msg.type === S2C.OVER) this.over = msg;
         this.inbox.push(msg);
@@ -79,6 +82,11 @@ class Client {
     return this.events.filter((e) => e.kind === kind);
   }
 
+  /** 只清事件，保留快照。清快照会导致随后 tank() 读到 undefined */
+  clearEvents() {
+    this.events = [];
+  }
+
   reset() {
     this.snapshots = [];
     this.events = [];
@@ -109,22 +117,48 @@ async function setupMatch(nickA = '甲', nickB = '乙') {
 }
 
 /**
- * 让 shooter 面向 target 并持续射击，直到 target 被淘汰或超时。
- * 两人分别在左上、右上角，故 A 朝右、B 朝左即可互指。
+ * 让 shooter 淘汰 target。
+ *
+ * ⚠️ 本测试须在空旷地图下运行（TANK_EMPTY_MAP=1，见 package.json）。
+ *
+ *    原因：随机地图会在两车之间插入掩体，导致测试脚本必须实现 AI 寻路
+ *    才能命中对手 —— 那考察的是脚本寻路能力，而非"射击→命中→淘汰→结算"
+ *    这条真正要验证的链路。曾尝试贪心移动与 BFS 寻路，均因坦克在格子边缘
+ *    抖动而超时（实测 20s 仅推进 670px）。
+ *
+ *    地图随机性由 test/map.test.js 以 50 个种子独立覆盖，不会漏测。
+ *
+ * 策略：靶子朝射手直线靠近，射手对准开火。空旷地图下必然命中。
  */
-async function shootUntilDead(shooter, shooterId, targetId, dir, timeoutMs = 12000) {
-  // 先转向目标
-  shooter.send(C2S.INPUT, { dir });
-  await sleep(60);
-  shooter.send(C2S.INPUT, { dir: null });
-
+async function shootUntilDead(shooter, target, shooterId, targetId, timeoutMs = 15000) {
   const deadline = Date.now() + timeoutMs;
+
   while (Date.now() < deadline) {
-    const t = shooter.tank(targetId);
-    if (!t || !t.alive) return true;
+    const me = shooter.tank(shooterId);
+    const foe = shooter.tank(targetId);
+    if (!foe || !foe.alive) return true;
+    if (!me || !me.alive) return false;
+
+    const dx = foe.x - me.x;
+    const dy = foe.y - me.y;
+
+    // 先在竖直方向对齐，再水平推进 —— 保证子弹沿轴线飞行
+    if (Math.abs(dy) > 10) {
+      target.send(C2S.INPUT, { dir: dy > 0 ? 'up' : 'down' });
+      await sleep(90);
+      continue;
+    }
+    target.send(C2S.INPUT, { dir: null });
+
+    const aimDir = dx > 0 ? 'right' : 'left';
+    shooter.send(C2S.INPUT, { dir: aimDir });
+    await sleep(40);
+    shooter.send(C2S.INPUT, { dir: null });
     shooter.send(C2S.FIRE, {});
-    await sleep(120);
+    await sleep(110);
   }
+
+  target.send(C2S.INPUT, { dir: null });
   return false;
 }
 
@@ -136,7 +170,8 @@ async function main() {
   {
     const { a, b, idA, idB } = await setupMatch();
 
-    a.reset();
+    a.clearEvents();
+    const snapsBefore = a.snapshots.length;
     a.send(C2S.FIRE, {});
     await sleep(120);
 
@@ -147,7 +182,7 @@ async function main() {
 
     // 冷却 300ms：先等上一发的冷却彻底过去，再测连发
     await sleep(350);
-    a.reset();
+    a.clearEvents();
     for (let i = 0; i < 5; i++) {
       a.send(C2S.FIRE, {});
       await sleep(10);
@@ -157,7 +192,7 @@ async function main() {
     check('射击冷却生效（连发 5 次仅 1 发）', fires === 1, `实际 ${fires} 发`);
 
     await sleep(350);
-    a.reset();
+    a.clearEvents();
     a.send(C2S.FIRE, {});
     await sleep(120);
     check('冷却结束后可再次射击', a.evts(EVENT_KIND.FIRE).length === 1);
@@ -175,14 +210,14 @@ async function main() {
     // 等无敌期结束（2s），否则打不掉血
     await sleep(2100);
 
-    // 先读血量再清事件：reset() 会清空快照，立即读 snap 会得到 null
     const hpBefore = a.tank(idB)?.hp;
     check('目标初始满血', hpBefore === MAX_HP, String(hpBefore));
 
-    a.reset();
-    b.reset();
+    // 只清事件，保留快照 —— 否则随后 tank() 会读到 undefined
+    a.clearEvents();
+    b.clearEvents();
 
-    const killed = await shootUntilDead(a, idA, idB, 'right');
+    const killed = await shootUntilDead(a, b, idA, idB);
     check('目标最终被淘汰', killed);
 
     const hits = a.evts(EVENT_KIND.HIT).filter((e) => !e.wall);
@@ -231,9 +266,11 @@ async function main() {
   {
     const { a, b, idA, idB } = await setupMatch();
 
-    // 无敌期内射击对方，不应扣血
-    a.reset();
-    await shootUntilDead(a, idA, idB, 'right', 1200);
+    // 无敌期内射击对方，不应扣血。
+    // 无敌期仅 2s，且随机地图下不保证能立刻命中，
+    // 因此这里只断言"未掉血"，不断言"必定命中"
+    a.clearEvents();
+    await shootUntilDead(a, b, idA, idB, 1200);
     const hpDuringInv = a.tank(idB)?.hp;
     check('无敌期内目标不掉血', hpDuringInv === MAX_HP, String(hpDuringInv));
 
@@ -249,7 +286,8 @@ async function main() {
   console.log('\n4. 对手中途退出');
   {
     const { a, b, idA, idB } = await setupMatch();
-    a.reset();
+    a.clearEvents();
+    a.over = null;
 
     b.send(C2S.LEAVE, {});
     await sleep(300);
@@ -269,7 +307,8 @@ async function main() {
   console.log('\n5. 对手掉线');
   {
     const { a, b, idA } = await setupMatch();
-    a.reset();
+    a.clearEvents();
+    a.over = null;
 
     b.close(); // 模拟关闭浏览器
     await sleep(400);

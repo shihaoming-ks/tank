@@ -17,17 +17,43 @@ import {
   ROWS,
   TANK_SIZE,
   TILE,
+  TILE_TYPE,
 } from '/shared/constants.js';
 
 /** 配色。与 CSS 变量保持一致，走军事仪表盘方向 */
 const PALETTE = {
   ground: '#12150f',
   gridLine: '#1a1e16',
-  wallFill: '#3d4436',
-  wallEdge: '#4e5644',
   bullet: '#ffe9b0',
   selfRing: '#ffffff',
   deadTank: '#2a2e26',
+};
+
+/**
+ * 各类图块的绘制样式。
+ *
+ * ⚠️ S3 接入 AIGC 贴图时，只需把此表的 fill/edge 换成 sprite 字段，
+ *    并在 drawTile 里改为 ctx.drawImage —— 不触碰任何其他代码。
+ */
+const TILE_STYLE = {
+  [TILE_TYPE.BORDER]: {
+    fill: '#5a5f52',
+    edge: '#767c6a',
+    // 边界用双层描边表现"厚重不可破坏"
+    style: 'border',
+  },
+  [TILE_TYPE.BRICK]: {
+    fill: '#8a5a3c',
+    edge: '#a97148',
+    // 砖墙画横向砌缝
+    style: 'brick',
+  },
+  [TILE_TYPE.STEEL]: {
+    fill: '#4a5560',
+    edge: '#6b7a88',
+    // 钢块画中心铆钉与斜切高光
+    style: 'steel',
+  },
 };
 
 export class Renderer {
@@ -205,17 +231,68 @@ export class Renderer {
     for (let r = 0; r < this.grid.length; r++) {
       const row = this.grid[r];
       for (let c = 0; c < row.length; c++) {
-        if (row[c] !== 1) continue;
-        const x = c * TILE;
-        const y = r * TILE;
-
-        ctx.fillStyle = PALETTE.wallFill;
-        ctx.fillRect(x, y, TILE, TILE);
-        // 内描边营造砖块厚度感，避免大片纯色显得扁平
-        ctx.strokeStyle = PALETTE.wallEdge;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1);
+        const tile = row[c];
+        if (tile === TILE_TYPE.EMPTY) continue;
+        this.drawTile(ctx, tile, c * TILE, r * TILE);
       }
+    }
+  }
+
+  /**
+   * 绘制单个图块。
+   * 三类图块视觉差异明确，玩家能一眼分辨边界与内部障碍。
+   *
+   * S3 替换素材时只需把此函数体换成 ctx.drawImage(sprite, x, y, TILE, TILE)。
+   */
+  drawTile(ctx, tile, x, y) {
+    const s = TILE_STYLE[tile];
+    if (!s) return;
+
+    ctx.fillStyle = s.fill;
+    ctx.fillRect(x, y, TILE, TILE);
+
+    ctx.strokeStyle = s.edge;
+    ctx.lineWidth = 1;
+
+    if (s.style === 'border') {
+      // 双层描边 + 对角斜线，表现不可破坏的钢结构边界
+      ctx.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1);
+      ctx.strokeRect(x + 4.5, y + 4.5, TILE - 9, TILE - 9);
+    } else if (s.style === 'brick') {
+      // 横向砌缝，错位排列
+      ctx.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1);
+      ctx.beginPath();
+      for (let i = 1; i < 4; i++) {
+        const ly = y + (TILE / 4) * i;
+        ctx.moveTo(x, ly + 0.5);
+        ctx.lineTo(x + TILE, ly + 0.5);
+      }
+      // 竖缝逐行错开半砖
+      for (let i = 0; i < 4; i++) {
+        const ly = y + (TILE / 4) * i;
+        const lx = x + (i % 2 === 0 ? TILE / 2 : TILE / 4);
+        ctx.moveTo(lx + 0.5, ly);
+        ctx.lineTo(lx + 0.5, ly + TILE / 4);
+      }
+      ctx.stroke();
+    } else if (s.style === 'steel') {
+      // 四角铆钉 + 中心高光块，质感区别于砖墙
+      ctx.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1);
+      ctx.fillStyle = s.edge;
+      const p = 5;
+      const rr = 2;
+      for (const [dx, dy] of [
+        [p, p],
+        [TILE - p, p],
+        [p, TILE - p],
+        [TILE - p, TILE - p],
+      ]) {
+        ctx.beginPath();
+        ctx.arc(x + dx, y + dy, rr, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = 'rgb(255 255 255 / 8%)';
+      ctx.fillRect(x + TILE / 2 - 5, y + TILE / 2 - 5, 10, 10);
     }
   }
 

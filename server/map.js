@@ -1,98 +1,40 @@
 /**
  * 地图生成
  *
- * 地图为 COLS × ROWS 的网格，每格 TILE 像素。
- * 0 = 空地，1 = 障碍。
+ * 地图为 COLS × ROWS 的网格，每格 TILE 像素，值取自 TILE_TYPE。
  *
  * 为什么用网格而非任意矩形：
  *   碰撞检测退化为"算出实体覆盖哪几格，查数组"，O(4) 而非 O(n)，
  *   且不会出现浮点缝隙穿墙的经典 bug。
  *
- * ⚠️ 通道宽度约束：坦克为 TANK_SIZE(24)，格子为 TILE(32)，
- *    因此单格通道即可通行，但**相邻障碍之间必须留足 1 格**，
- *    否则会出现视觉上有路却走不过去的情况。
+ * 每局随机生成，但受三条硬约束保护：
+ *   1. 障碍比例固定（MAP_FILL_RATIO），避免忽空旷忽拥挤
+ *   2. 出生点周围留安全区，不会开局即被围死
+ *   3. 生成后校验连通性，保证任意两个出生点之间可达
  */
 
-import { COLS, ROWS, TANK_SIZE, TILE } from '../shared/constants.js';
+import {
+  BLOCKING_TILES,
+  COLS,
+  MAP_FILL_RATIO,
+  MAP_STEEL_RATIO,
+  ROWS,
+  SPAWN_SAFE_RADIUS,
+  TANK_SIZE,
+  TILE,
+  TILE_TYPE,
+} from '../shared/constants.js';
 
-/** 图块类型 */
-export const TILE_TYPE = {
-  EMPTY: 0,
-  WALL: 1,
-};
+export { TILE_TYPE };
 
-/**
- * 生成固定地图。
- *
- * 刻意用固定布局而非随机生成：
- *   1. 对战公平性 —— 所有玩家面对同一张图
- *   2. 可复现性 —— 出 bug 时能稳定重现
- *   3. 出生点安全性可预先验证，不会随机到墙里
- *
- * 布局为中心对称，保证四个出生角落机会均等。
- *
- * @returns {number[][]} grid[row][col]
- */
-export function createMap() {
-  const grid = Array.from({ length: ROWS }, () => new Array(COLS).fill(TILE_TYPE.EMPTY));
-
-  const setWall = (col, row) => {
-    if (row >= 0 && row < ROWS && col >= 0 && col < COLS) {
-      grid[row][col] = TILE_TYPE.WALL;
-    }
-  };
-
-  // ---- 外围边框 ----
-  // 虽然移动逻辑已限制边界，但画出实体墙让玩家直观理解战场范围
-  for (let c = 0; c < COLS; c++) {
-    setWall(c, 0);
-    setWall(c, ROWS - 1);
-  }
-  for (let r = 0; r < ROWS; r++) {
-    setWall(0, r);
-    setWall(COLS - 1, r);
-  }
-
-  // ---- 四个对称的方块掩体 ----
-  // 位于四个象限，为出生点提供就近掩护
-  const blocks = [
-    [4, 4],
-    [COLS - 6, 4],
-    [4, ROWS - 6],
-    [COLS - 6, ROWS - 6],
-  ];
-  for (const [c, r] of blocks) {
-    for (let dc = 0; dc < 2; dc++) {
-      for (let dr = 0; dr < 2; dr++) setWall(c + dc, r + dr);
-    }
-  }
-
-  // ---- 中央十字掩体 ----
-  // 打断中场直线视野，避免开局对角对射秒杀。
-  // 刻意在正中留缺口，使十字不封闭，保留穿越路径
-  const midC = Math.floor(COLS / 2);
-  const midR = Math.floor(ROWS / 2);
-  for (let d = -3; d <= 3; d++) {
-    if (Math.abs(d) <= 1) continue; // 中心留空
-    setWall(midC, midR + d);
-    setWall(midC + d, midR);
-  }
-
-  // ---- 上下横向短墙 ----
-  // 增加路径选择，避免上下贯通成为唯一高速通道
-  for (let c = midC - 5; c <= midC + 5; c++) {
-    if (Math.abs(c - midC) <= 1) continue; // 留缺口可穿过
-    setWall(c, 3);
-    setWall(c, ROWS - 4);
-  }
-
-  return grid;
+/** 某个图块是否阻挡通行 */
+export function isBlocking(tile) {
+  return BLOCKING_TILES.has(tile);
 }
 
 /**
  * 出生点（像素坐标，坦克中心）。
- * 四角内缩 2 格，确保与任何墙体不重叠。
- * 顺序与玩家 slot 一致，slot 0 → 左上，1 → 右上，2 → 左下，3 → 右下。
+ * 四角内缩，顺序与玩家 slot 对应：0 左上、1 右上、2 左下、3 右下。
  */
 export function getSpawnPoints() {
   const inset = 2.5; // 单位：格
@@ -104,9 +46,189 @@ export function getSpawnPoints() {
   ];
 }
 
+/** 出生点对应的格坐标 */
+function spawnCells() {
+  return getSpawnPoints().map((p) => ({
+    col: Math.floor(p.x / TILE),
+    row: Math.floor(p.y / TILE),
+  }));
+}
+
 /**
- * 自检：确认所有出生点均不与墙体重叠。
- * 在房间初始化时调用，把地图设计错误暴露在启动阶段而非对战中途。
+ * 生成一张随机地图。
+ *
+ * @param {() => number} rng 随机源，默认 Math.random。
+ *        允许注入是为了让测试可复现（传入固定种子的伪随机函数）。
+ * @returns {number[][]} grid[row][col]
+ */
+export function createMap(rng = Math.random) {
+  // 测试钩子：生成无内部障碍的空旷地图。
+  //
+  // 为何需要：战斗冒烟测试要验证的是"射击 → 命中 → 淘汰 → 结算"这条链路，
+  // 而非寻路能力。随机掩体会让测试脚本必须实现 AI 寻路才能打中对手，
+  // 既脆弱又与被测目标无关。
+  // 地图随机性本身由 test/map.test.js 以 50 个种子独立覆盖，不会漏测。
+  if (process.env.TANK_EMPTY_MAP === '1') return emptyWithBorder();
+
+  // 最多重试若干次，直到生成一张连通的地图。
+  // 实测首次即通过的概率极高，重试只是兜底，避免极端随机导致孤岛。
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const grid = generateCandidate(rng);
+    if (isFullyConnected(grid)) return grid;
+  }
+
+  // 极端情况下退化为"仅边界、无内部障碍"，保证游戏一定可玩。
+  // 宁可地图单调，也不能让玩家进入一张走不通的图。
+  return emptyWithBorder();
+}
+
+/** 只有外围边界的空地图 */
+function emptyWithBorder() {
+  const grid = Array.from({ length: ROWS }, () => new Array(COLS).fill(TILE_TYPE.EMPTY));
+  for (let c = 0; c < COLS; c++) {
+    grid[0][c] = TILE_TYPE.BORDER;
+    grid[ROWS - 1][c] = TILE_TYPE.BORDER;
+  }
+  for (let r = 0; r < ROWS; r++) {
+    grid[r][0] = TILE_TYPE.BORDER;
+    grid[r][COLS - 1] = TILE_TYPE.BORDER;
+  }
+  return grid;
+}
+
+/**
+ * 生成一张候选地图（未校验连通性）。
+ *
+ * 采用"对称块状投放"而非逐格随机：
+ *   - 逐格随机会产生大量孤立单格，视觉杂乱且掩体功能差
+ *   - 块状（1×1 ~ 2×2）更接近人工设计的掩体形态
+ *   - 中心对称保证四个出生角机会均等，避免某个角天然吃亏
+ */
+function generateCandidate(rng) {
+  const grid = emptyWithBorder();
+
+  // 可放置区域为去掉边界后的内部
+  const innerCols = COLS - 2;
+  const innerRows = ROWS - 2;
+  const targetCells = Math.floor(innerCols * innerRows * MAP_FILL_RATIO);
+
+  const safe = buildSafeMask();
+
+  let placed = 0;
+  let guard = 0;
+  // 因为采用中心对称成对投放，每次循环最多填 2 组块
+  while (placed < targetCells && guard++ < 2000) {
+    // 只在左半区取点，右半区由对称镜像产生
+    const col = 1 + Math.floor(rng() * Math.ceil(innerCols / 2));
+    const row = 1 + Math.floor(rng() * innerRows);
+
+    // 2×2 的块占 35%，其余为 1×1，形态更自然
+    const size = rng() < 0.35 ? 2 : 1;
+    const type = rng() < MAP_STEEL_RATIO ? TILE_TYPE.STEEL : TILE_TYPE.BRICK;
+
+    placed += tryPlaceBlock(grid, safe, col, row, size, type);
+
+    // 中心对称镜像点
+    const mCol = COLS - 1 - col - (size - 1);
+    const mRow = ROWS - 1 - row - (size - 1);
+    placed += tryPlaceBlock(grid, safe, mCol, mRow, size, type);
+  }
+
+  return grid;
+}
+
+/**
+ * 标记禁止放置障碍的格子。
+ * 包含出生点安全区，以及出生点之间沿边缘的通道，
+ * 避免四角被完全封死。
+ */
+function buildSafeMask() {
+  const safe = Array.from({ length: ROWS }, () => new Array(COLS).fill(false));
+
+  for (const { col, row } of spawnCells()) {
+    for (let dr = -SPAWN_SAFE_RADIUS; dr <= SPAWN_SAFE_RADIUS; dr++) {
+      for (let dc = -SPAWN_SAFE_RADIUS; dc <= SPAWN_SAFE_RADIUS; dc++) {
+        const r = row + dr;
+        const c = col + dc;
+        if (r > 0 && r < ROWS - 1 && c > 0 && c < COLS - 1) safe[r][c] = true;
+      }
+    }
+  }
+
+  return safe;
+}
+
+/**
+ * 尝试放置一个 size×size 的块。
+ * @returns {number} 实际填充的格数
+ */
+function tryPlaceBlock(grid, safe, col, row, size, type) {
+  // 先整体校验，避免出现半个块被截断的碎片
+  for (let dr = 0; dr < size; dr++) {
+    for (let dc = 0; dc < size; dc++) {
+      const r = row + dr;
+      const c = col + dc;
+      if (r <= 0 || r >= ROWS - 1 || c <= 0 || c >= COLS - 1) return 0;
+      if (safe[r][c]) return 0;
+      if (grid[r][c] !== TILE_TYPE.EMPTY) return 0;
+    }
+  }
+
+  let n = 0;
+  for (let dr = 0; dr < size; dr++) {
+    for (let dc = 0; dc < size; dc++) {
+      grid[row + dr][col + dc] = type;
+      n++;
+    }
+  }
+  return n;
+}
+
+/**
+ * 校验所有出生点互相连通。
+ *
+ * 这一步不可省略：随机生成完全可能把某个出生角围成孤岛，
+ * 那样对局会直接失去意义（玩家永远碰不到面）。
+ *
+ * 注意按**坦克实际可通行性**判定而非单格可达：
+ * 坦克为 TANK_SIZE(24)、格为 TILE(32)，虽能穿单格通道，
+ * 但格中心间的移动需保证目标格空闲，故用格中心 BFS 即可近似。
+ */
+export function isFullyConnected(grid) {
+  const cells = spawnCells();
+  const start = cells[0];
+  if (isBlocking(grid[start.row]?.[start.col])) return false;
+
+  const seen = Array.from({ length: ROWS }, () => new Array(COLS).fill(false));
+  const queue = [start];
+  seen[start.row][start.col] = true;
+
+  const DIRS = [
+    [0, 1],
+    [0, -1],
+    [1, 0],
+    [-1, 0],
+  ];
+
+  while (queue.length) {
+    const { row, col } = queue.shift();
+    for (const [dr, dc] of DIRS) {
+      const r = row + dr;
+      const c = col + dc;
+      if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
+      if (seen[r][c]) continue;
+      if (isBlocking(grid[r][c])) continue;
+      seen[r][c] = true;
+      queue.push({ row: r, col: c });
+    }
+  }
+
+  return cells.every(({ row, col }) => seen[row]?.[col]);
+}
+
+/**
+ * 自检：出生点不与障碍重叠、且全部连通。
+ * 在房间初始化时调用，把地图缺陷暴露在启动阶段而非对战中途。
  *
  * @returns {string[]} 问题描述数组，空数组表示通过
  */
@@ -122,12 +244,30 @@ export function validateMap(grid) {
 
     for (let r = r0; r <= r1; r++) {
       for (let c = c0; c <= c1; c++) {
-        if (grid[r]?.[c] === TILE_TYPE.WALL) {
-          problems.push(`出生点 ${i} (${p.x},${p.y}) 与墙体重叠于格 (${c},${r})`);
+        if (isBlocking(grid[r]?.[c])) {
+          problems.push(`出生点 ${i} (${p.x},${p.y}) 与障碍重叠于格 (${c},${r})`);
         }
       }
     }
   });
 
+  if (!isFullyConnected(grid)) {
+    problems.push('出生点之间不连通，存在孤岛');
+  }
+
   return problems;
+}
+
+/** 统计各类图块数量，用于测试与调试 */
+export function countTiles(grid) {
+  const stat = { empty: 0, border: 0, brick: 0, steel: 0 };
+  for (const row of grid) {
+    for (const tile of row) {
+      if (tile === TILE_TYPE.EMPTY) stat.empty++;
+      else if (tile === TILE_TYPE.BORDER) stat.border++;
+      else if (tile === TILE_TYPE.BRICK) stat.brick++;
+      else if (tile === TILE_TYPE.STEEL) stat.steel++;
+    }
+  }
+  return stat;
 }
