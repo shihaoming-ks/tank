@@ -449,13 +449,47 @@ h1 {
   white-space: nowrap;
 }
 
+/* 血量：分段方块而非心形字符。
+   字符受字体渲染影响大且笔画细，方块在余光里能一眼数清。 */
 .hud-hp {
-  color: var(--red);
-  letter-spacing: -1px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--fg-dim);
 }
+
+.pip {
+  width: 9px;
+  height: 15px;
+  border-radius: 1px;
+  background: var(--green);
+  box-shadow: 0 0 6px rgb(68 187 164 / 55%);
+  flex: none;
+}
+/* 已失去的格子留出空槽，玩家才能看出"总共几格、还剩几格" */
+.pip.is-empty {
+  background: transparent;
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+
+/* 残血：整条转红并脉动。这是最需要被立刻注意到的状态 */
+.hud-hp.is-low .pip:not(.is-empty) {
+  background: var(--red);
+  box-shadow: 0 0 8px var(--red);
+  animation: pulse 0.8s ease-in-out infinite;
+}
+
 .hud-hp.is-dead {
+  display: block;
   color: var(--fg-dim);
   letter-spacing: normal;
+}
+
+/* 自己那一条整体放大，便于在多人局里快速定位自己的血量 */
+.hud-player.is-self .pip {
+  width: 11px;
+  height: 18px;
 }
 
 .canvas {

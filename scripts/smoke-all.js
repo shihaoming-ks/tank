@@ -88,10 +88,10 @@ const GROUPS = [
   {
     label: '随机地图模式',
     env: {},
-    scripts: ['scripts/smoke-room.js', 'scripts/smoke-move.js'],
+    scripts: ['scripts/smoke-room.js', 'scripts/smoke-move.js', 'scripts/smoke-brick.js'],
   },
   {
-    label: '空旷地图模式（TANK_EMPTY_MAP=1）',
+    label: '空旷地图模式（TANK_EMPTY_MAP=1，战斗测试需无掩体）',
     env: { TANK_EMPTY_MAP: '1' },
     scripts: ['scripts/smoke-combat.js'],
   },

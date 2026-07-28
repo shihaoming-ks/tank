@@ -9,12 +9,16 @@
  */
 
 import {
+  BARREL_LEN,
   BULLET_SIZE,
   COLS,
   DIR_VEC,
+  GO_TEXT_MS,
   MAP_H,
   MAP_W,
+  MAX_HP,
   ROWS,
+  TANK_BODY,
   TANK_SIZE,
   TILE,
   TILE_TYPE,
@@ -47,6 +51,20 @@ const TILE_STYLE = {
     edge: '#a97148',
     // 砖墙画横向砌缝
     style: 'brick',
+    // 破损程度 0 = 完好。用于叠加裂纹，让玩家能判断还需几发
+    damage: 0,
+  },
+  [TILE_TYPE.BRICK_2]: {
+    fill: '#7a4e33',
+    edge: '#96633f',
+    style: 'brick',
+    damage: 1,
+  },
+  [TILE_TYPE.BRICK_1]: {
+    fill: '#69422b',
+    edge: '#835435',
+    style: 'brick',
+    damage: 2,
   },
   [TILE_TYPE.STEEL]: {
     fill: '#4a5560',
@@ -76,6 +94,13 @@ export class Renderer {
     this.effects = [];
     /** playerId → 命中闪白截止时间 */
     this.flash = new Map();
+    /**
+     * 「开始！」文字的展示截止时间（performance.now 基准）。
+     * 由 cd 从 >0 变为 0 的那一刻触发，纯表现层。
+     */
+    this.goUntil = 0;
+    /** 上一帧的倒计时剩余，用于检测"倒计时刚结束"这一瞬间 */
+    this.lastCd = 0;
 
     this.setupHiDPI();
   }
@@ -95,6 +120,17 @@ export class Renderer {
 
   setMap(grid) {
     if (grid) this.grid = grid;
+  }
+
+  /**
+   * 应用地图增量（砖墙被击破）。
+   * 增量而非全量重发：地图约 600B，30Hz 下全量会让流量翻十倍。
+   */
+  applyMapPatches(patches) {
+    if (!this.grid || !patches?.length) return;
+    for (const p of patches) {
+      if (this.grid[p.r]) this.grid[p.r][p.c] = p.v;
+    }
   }
 
   setSelfId(id) {
@@ -125,6 +161,17 @@ export class Renderer {
         if (ev.targetId) this.flash.set(ev.targetId, now + 150);
       } else if (ev.kind === 'kill') {
         this.effects.push({ type: 'explosion', x: ev.x, y: ev.y, born: now, life: 620 });
+      } else if (ev.kind === 'brick_break') {
+        // 击破用碎块四散，仅扣耐久用小尘土，二者观感必须可区分
+        this.effects.push({
+          type: ev.broken ? 'debris' : 'dust',
+          x: ev.x,
+          y: ev.y,
+          born: now,
+          life: ev.broken ? 460 : 260,
+        });
+      } else if (ev.kind === 'ram') {
+        this.effects.push({ type: 'ram', x: ev.x, y: ev.y, born: now, life: 380 });
       }
     }
   }
@@ -133,6 +180,8 @@ export class Renderer {
   clearEffects() {
     this.effects = [];
     this.flash.clear();
+    this.goUntil = 0;
+    this.lastCd = 0;
   }
 
   /**
@@ -150,6 +199,81 @@ export class Renderer {
       for (const t of snap.tanks ?? []) this.drawTank(ctx, t);
     }
     this.drawEffects(ctx);
+
+    // 倒计时盖在最上层：玩家能看清战场与彼此位置，但明确知道还不能动
+    const cd = snap?.cd ?? 0;
+    if (cd > 0) {
+      this.drawCountdown(ctx, cd);
+    } else if (this.lastCd > 0) {
+      // 倒计时刚归零 —— 触发"开始！"。
+      // 用状态跳变而非某个固定秒数判断，丢帧也不会漏触发
+      this.goUntil = performance.now() + GO_TEXT_MS;
+    }
+    this.lastCd = cd;
+
+    if (performance.now() < this.goUntil) this.drawGo(ctx);
+  }
+
+  /**
+   * 绘制「开始！」。
+   * 放大淡出，与 3-2-1 的节奏衔接，明确告知玩家可以行动了。
+   */
+  drawGo(ctx) {
+    const p = 1 - (this.goUntil - performance.now()) / GO_TEXT_MS;
+
+    ctx.save();
+    ctx.translate(MAP_W / 2, MAP_H / 2);
+    // 从 1.0 放大到 1.6，同时淡出
+    ctx.scale(1 + p * 0.6, 1 + p * 0.6);
+    ctx.globalAlpha = Math.max(0, 1 - p * 1.2);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 84px "SF Mono", Menlo, monospace';
+    ctx.lineWidth = 7;
+    ctx.strokeStyle = 'rgb(0 0 0 / 75%)';
+    ctx.strokeText('开始！', 0, 0);
+    ctx.fillStyle = '#44bba4';
+    ctx.fillText('开始！', 0, 0);
+
+    ctx.restore();
+  }
+
+  /**
+   * 绘制开局倒计时。
+   * 数字随每秒重新放大，给出清晰的节奏感。
+   */
+  drawCountdown(ctx, remainMs) {
+    const sec = Math.ceil(remainMs / 1000);
+    // 当前这一秒内的进度，用于缩放动画
+    const frac = 1 - ((remainMs % 1000) || 1000) / 1000;
+
+    ctx.save();
+    ctx.fillStyle = 'rgb(0 0 0 / 42%)';
+    ctx.fillRect(0, 0, MAP_W, MAP_H);
+
+    ctx.translate(MAP_W / 2, MAP_H / 2);
+    const scale = 1.5 - frac * 0.5;
+    ctx.scale(scale, scale);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 110px "SF Mono", Menlo, monospace';
+    ctx.globalAlpha = 0.35 + (1 - frac) * 0.65;
+
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = 'rgb(0 0 0 / 70%)';
+    ctx.strokeText(String(sec), 0, 0);
+    ctx.fillStyle = '#f6ae2d';
+    ctx.fillText(String(sec), 0, 0);
+
+    ctx.globalAlpha = 1;
+    ctx.scale(1 / scale, 1 / scale);
+    ctx.font = '13px "SF Mono", Menlo, monospace';
+    ctx.fillStyle = '#d8dcd6';
+    ctx.fillText('准备就绪', 0, 88);
+
+    ctx.restore();
   }
 
   /**
@@ -180,6 +304,39 @@ export class Renderer {
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(fx.x, fx.y, 4 + p * 14, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (fx.type === 'dust') {
+        ctx.globalAlpha = (1 - p) * 0.7;
+        ctx.fillStyle = '#b79878';
+        for (let i = 0; i < 4; i++) {
+          const a = (i / 4) * Math.PI * 2;
+          const d = p * 12;
+          ctx.beginPath();
+          ctx.arc(fx.x + Math.cos(a) * d, fx.y + Math.sin(a) * d, 2 * (1 - p) + 0.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (fx.type === 'debris') {
+        // 碎块四散：8 个方向的小方块，明确表达"墙被打穿了"
+        ctx.globalAlpha = 1 - p;
+        ctx.fillStyle = '#8a5a3c';
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2 + 0.3;
+          const d = p * 26;
+          const sz = 4 * (1 - p) + 1;
+          ctx.fillRect(fx.x + Math.cos(a) * d - sz / 2, fx.y + Math.sin(a) * d - sz / 2, sz, sz);
+        }
+      } else if (fx.type === 'ram') {
+        // 相撞用交叉冲击线，与子弹命中的圆环区分开
+        ctx.globalAlpha = 1 - p;
+        ctx.strokeStyle = '#ff6b4a';
+        ctx.lineWidth = 2.5 * (1 - p) + 1;
+        const r = 8 + p * 18;
+        ctx.beginPath();
+        for (let i = 0; i < 4; i++) {
+          const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+          ctx.moveTo(fx.x + Math.cos(a) * r * 0.4, fx.y + Math.sin(a) * r * 0.4);
+          ctx.lineTo(fx.x + Math.cos(a) * r, fx.y + Math.sin(a) * r);
+        }
         ctx.stroke();
       } else if (fx.type === 'explosion') {
         // 双层扩散圆环 + 中心亮斑，纯几何实现，零素材
@@ -275,6 +432,22 @@ export class Renderer {
         ctx.lineTo(lx + 0.5, ly + TILE / 4);
       }
       ctx.stroke();
+
+      // 破损裂纹：按 damage 叠加，让玩家能判断还需几发
+      if (s.damage > 0) {
+        ctx.strokeStyle = 'rgb(0 0 0 / 55%)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(x + 6, y + 4);
+        ctx.lineTo(x + 14, y + 16);
+        ctx.lineTo(x + 9, y + 27);
+        if (s.damage > 1) {
+          ctx.moveTo(x + TILE - 5, y + 7);
+          ctx.lineTo(x + TILE - 15, y + 18);
+          ctx.lineTo(x + TILE - 8, y + TILE - 4);
+        }
+        ctx.stroke();
+      }
     } else if (s.style === 'steel') {
       // 四角铆钉 + 中心高光块，质感区别于砖墙
       ctx.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1);
@@ -305,7 +478,10 @@ export class Renderer {
     // 命中瞬间整车闪白，是最直接的受击反馈
     if (isFlashing && tank.alive) color = '#ffffff';
 
-    const half = TANK_SIZE / 2;
+    // ⭐ 车体用 TANK_BODY（小于碰撞盒 TANK_SIZE），空出的部分给炮筒，
+    //    使「车体 + 炮筒」的视觉总长恰好等于碰撞盒 ——
+    //    从此不会再出现"炮筒插进墙里"的观感问题。
+    const bodyHalf = TANK_BODY / 2;
 
     ctx.save();
     ctx.translate(tank.x, tank.y);
@@ -315,36 +491,38 @@ export class Renderer {
       ctx.globalAlpha = 0.4 + 0.35 * Math.sin(Date.now() / 90);
     }
 
+    // 炮管先画，让车体覆盖其根部，视觉上更像一体
+    const vec = DIR_VEC[tank.dir] ?? DIR_VEC.up;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'butt';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(vec.x * (bodyHalf + BARREL_LEN), vec.y * (bodyHalf + BARREL_LEN));
+    ctx.stroke();
+
     // 车体
     ctx.fillStyle = color;
-    ctx.fillRect(-half, -half, TANK_SIZE, TANK_SIZE);
+    ctx.fillRect(-bodyHalf, -bodyHalf, TANK_BODY, TANK_BODY);
 
     // 履带：两侧深色条带，提示这是载具而非方块
     ctx.fillStyle = 'rgb(0 0 0 / 32%)';
-    const vec = DIR_VEC[tank.dir] ?? DIR_VEC.up;
     if (vec.x !== 0) {
-      ctx.fillRect(-half, -half, TANK_SIZE, 4);
-      ctx.fillRect(-half, half - 4, TANK_SIZE, 4);
+      ctx.fillRect(-bodyHalf, -bodyHalf, TANK_BODY, 3);
+      ctx.fillRect(-bodyHalf, bodyHalf - 3, TANK_BODY, 3);
     } else {
-      ctx.fillRect(-half, -half, 4, TANK_SIZE);
-      ctx.fillRect(half - 4, -half, 4, TANK_SIZE);
+      ctx.fillRect(-bodyHalf, -bodyHalf, 3, TANK_BODY);
+      ctx.fillRect(bodyHalf - 3, -bodyHalf, 3, TANK_BODY);
     }
 
-    // 炮管
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 5;
-    ctx.lineCap = 'square';
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(vec.x * (half + 7), vec.y * (half + 7));
-    ctx.stroke();
-
-    // 自己的坦克加白色描边环，避免在同色系里找不到自己
+    // 自己的坦克加白色描边环，避免在同色系里找不到自己。
+    // 描边尺寸即碰撞盒，顺便让玩家直观看到自己的实际体积
     if (tank.id === this.selfId) {
       ctx.globalAlpha = 1;
       ctx.strokeStyle = PALETTE.selfRing;
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(-half - 3.5, -half - 3.5, TANK_SIZE + 7, TANK_SIZE + 7);
+      ctx.lineWidth = 1;
+      const h = TANK_SIZE / 2;
+      ctx.strokeRect(-h - 0.5, -h - 0.5, TANK_SIZE + 1, TANK_SIZE + 1);
     }
 
     ctx.restore();
@@ -355,12 +533,41 @@ export class Renderer {
 
   drawNameplate(ctx, tank, meta) {
     ctx.save();
+
+    // ---- 血条 ----
+    // 画在坦克上方：对战时玩家视线锁在战场，顶部 HUD 需要移开目光才能看，
+    // 而血量是最高频、最关键的信息，必须就近呈现。
+    if (tank.alive) {
+      const pipW = 7;
+      const pipH = 5;
+      const gap = 2;
+      const total = MAX_HP * pipW + (MAX_HP - 1) * gap;
+      const bx = tank.x - total / 2;
+      const by = tank.y - TANK_SIZE / 2 - 9;
+
+      for (let i = 0; i < MAX_HP; i++) {
+        const x = bx + i * (pipW + gap);
+        if (i < tank.hp) {
+          // 残血转红，与 HUD 的配色规则一致，避免两处语义冲突
+          ctx.fillStyle = tank.hp <= 1 ? '#e94f37' : '#44bba4';
+          ctx.fillRect(x, by, pipW, pipH);
+        } else {
+          ctx.fillStyle = 'rgb(0 0 0 / 55%)';
+          ctx.fillRect(x, by, pipW, pipH);
+          ctx.strokeStyle = 'rgb(216 220 214 / 30%)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + 0.5, by + 0.5, pipW - 1, pipH - 1);
+        }
+      }
+    }
+
+    // ---- 昵称 ----
     ctx.font = '10px "SF Mono", Menlo, monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
 
     const label = tank.alive ? meta.nickname : `${meta.nickname} · 淘汰`;
-    const y = tank.y - TANK_SIZE / 2 - 8;
+    const y = tank.y - TANK_SIZE / 2 - (tank.alive ? 12 : 8);
 
     // 描边保证在任何底色上都可读
     ctx.strokeStyle = 'rgb(0 0 0 / 78%)';

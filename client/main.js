@@ -8,7 +8,7 @@
  *    绝不在本地推断或预测。
  */
 
-import { END_REASON, MATCH_DURATION_MS, PHASE, ROOM_MAX } from '/shared/constants.js';
+import { END_REASON, MATCH_DURATION_MS, MAX_HP, PHASE, ROOM_MAX } from '/shared/constants.js';
 import { C2S, S2C, isValidRoomId, normalizeNickname } from '/shared/protocol.js';
 import { Feed } from './feed.js';
 import { InputController } from './input.js';
@@ -85,11 +85,24 @@ function showView(name) {
   for (const [key, el] of Object.entries(els.views)) {
     el.hidden = key !== name;
   }
-  // 只在对战视图接收键盘，避免在大厅输入昵称时误触发移动。
-  // 结算面板打开时也应停止响应，否则玩家会对着已结束的对局操作
-  input.setEnabled(name === 'game' && els.overlayOver.hidden);
+  syncInputEnabled();
   // 切入对战视图后立即画一帧，不等下一个快照到达
   if (name === 'game') drawFrame();
+}
+
+/**
+ * 同步键盘输入开关。
+ *
+ * 三个条件须同时满足才接收输入：
+ *   1. 处于对战视图 —— 避免在大厅输入昵称时误触发移动
+ *   2. 结算面板已关闭 —— 否则玩家会对着已结束的对局操作
+ *   3. 阶段为 PLAYING —— 倒计时期间服务端会拦下操作，本地也禁用，
+ *      否则玩家按键无反应却看不出原因
+ */
+function syncInputEnabled() {
+  const onGame = !els.views.game.hidden;
+  const canPlay = state.room?.phase === PHASE.PLAYING;
+  input.setEnabled(onGame && els.overlayOver.hidden && canPlay);
 }
 
 /** 错误提示（3.5s 后自动消失） */
@@ -142,8 +155,10 @@ function renderRoom(room) {
   state.roomId = room.roomId;
   renderer.setPlayers(room.players);
 
-  // 新一局开始：清掉上一局的结算面板与残留特效
-  if (prevPhase !== PHASE.PLAYING && room.phase === PHASE.PLAYING) {
+  // 新一局开始（进入倒计时即视为开始）：清掉上一局的结算面板与残留特效
+  const started = room.phase === PHASE.COUNTDOWN || room.phase === PHASE.PLAYING;
+  const wasStarted = prevPhase === PHASE.COUNTDOWN || prevPhase === PHASE.PLAYING;
+  if (!wasStarted && started) {
     state.result = null;
     renderer.clearEffects();
     hideResult();
@@ -197,8 +212,15 @@ function renderRoom(room) {
   // 阶段切换完全由服务端驱动。
   // OVER 阶段保持在战场视图：结算面板叠加在战场之上，
   // 让玩家能看到最后一刻的局面，而不是被弹回等待区
-  const onField = room.phase === PHASE.PLAYING || room.phase === PHASE.OVER;
+  // 倒计时阶段就切入战场：玩家需要提前看清地图与自己的位置
+  const onField =
+    room.phase === PHASE.COUNTDOWN || room.phase === PHASE.PLAYING || room.phase === PHASE.OVER;
   showView(onField ? 'game' : 'room');
+
+  // 输入开关必须在 showView 之后再刷一次：
+  // showView 读的是 state.room（此处已更新），但阶段从 COUNTDOWN → PLAYING
+  // 时视图名不变，不会触发 showView，需在此显式同步
+  syncInputEnabled();
 
   // 结算面板开着时，房主/人数变化会影响"再来一局"是否可点
   if (!els.overlayOver.hidden && state.result) showResult(state.result);
@@ -253,8 +275,24 @@ function updateHudFromSnapshot(snap) {
   for (const t of snap.tanks ?? []) {
     const el = els.hudPlayers.querySelector(`[data-player-id="${t.id}"]`);
     if (!el) continue;
-    el.textContent = t.alive ? '❤'.repeat(Math.max(0, t.hp)) : '淘汰';
-    el.classList.toggle('is-dead', !t.alive);
+
+    if (!t.alive) {
+      el.textContent = '淘汰';
+      el.classList.add('is-dead');
+      el.classList.remove('is-low');
+      continue;
+    }
+    el.classList.remove('is-dead');
+    // 用分段方块而非小号心形字符：字符受字体渲染影响大且太细，
+    // 方块能在余光里一眼数清还剩几格
+    el.innerHTML = '';
+    for (let i = 0; i < MAX_HP; i++) {
+      const pip = document.createElement('i');
+      pip.className = i < t.hp ? 'pip' : 'pip is-empty';
+      el.append(pip);
+    }
+    // 残血高亮：1 血时整条转红并轻微脉动，这是最需要被注意到的状态
+    el.classList.toggle('is-low', t.hp <= 1);
   }
 
   const left = snap.timeLeft ?? MATCH_DURATION_MS;
@@ -324,6 +362,8 @@ net.on(S2C.ROOM, (msg) => renderRoom(msg));
 net.on(S2C.SNAPSHOT, (msg) => {
   // 地图只在首帧下发，需缓存
   if (msg.map) renderer.setMap(msg.map);
+  // 砖墙被击破的增量更新
+  if (msg.mp) renderer.applyMapPatches(msg.mp);
 
   // 丢弃乱序到达的旧帧，否则画面会出现回跳。
   // ⚠️ 必须先比对 matchId：换局时帧号基准会变，
@@ -434,7 +474,7 @@ function showResult(result) {
 
 function hideResult() {
   els.overlayOver.hidden = true;
-  if (!els.views.game.hidden) input.setEnabled(true);
+  syncInputEnabled();
 }
 
 // ---------------- 交互 ----------------
@@ -503,8 +543,8 @@ function requestRestart() {
     return;
   }
 
-  // 给出即时反馈，避免用户以为没点到而反复点击
-  toast('已开始新游戏', 'ok');
+  // 不再弹 Toast：开局有 3-2-1 倒计时与「开始！」提示，
+  // 顶部再叠一层浮层反而干扰视线
   net.send(C2S.START, {});
 }
 els.btnAgain.addEventListener('click', requestRestart);

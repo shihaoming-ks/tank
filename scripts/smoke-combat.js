@@ -9,7 +9,14 @@
 
 import { WebSocket } from 'ws';
 import { C2S, EVENT_KIND, S2C, decode, encode } from '../shared/protocol.js';
-import { END_REASON, MAX_HP } from '../shared/constants.js';
+import {
+  BLOCKING_TILES,
+  COUNTDOWN_MS,
+  END_REASON,
+  MAX_HP,
+  TILE,
+  TILE_TYPE,
+} from '../shared/constants.js';
 
 const URL = process.env.WS_URL || 'ws://localhost:8080/ws';
 
@@ -27,6 +34,22 @@ function check(desc, ok, detail) {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * 等待开局倒计时结束。
+ *
+ * 开局后有 COUNTDOWN_MS 的准备期，期间服务端会拒绝移动与开火 ——
+ * 测试必须等它走完，否则所有操作都会被静默丢弃。
+ */
+async function waitCountdown(client, extra = 150) {
+  const deadline = Date.now() + COUNTDOWN_MS + 2000;
+  while (Date.now() < deadline) {
+    if (client.snap && !(client.snap.cd > 0)) break;
+    await sleep(50);
+  }
+  await sleep(extra);
+}
+
 
 class Client {
   constructor(name) {
@@ -112,6 +135,8 @@ async function setupMatch(nickA = '甲', nickB = '乙') {
 
   a.send(C2S.START, {});
   await sleep(250);
+  // 等倒计时结束，否则后续所有操作都会被服务端拒绝
+  await waitCountdown(a);
 
   return { a, b, idA: jA.selfId, idB: jB.selfId, roomId: jA.roomId };
 }
@@ -207,7 +232,7 @@ async function main() {
   {
     const { a, b, idA, idB } = await setupMatch('射手', '靶子');
 
-    // 等无敌期结束（2s），否则打不掉血
+    // 无敌期从倒计时结束时开始计（RESPAWN_INVULN_MS），需等它走完才能扣血
     await sleep(2100);
 
     const hpBefore = a.tank(idB)?.hp;
@@ -409,6 +434,136 @@ async function main() {
     a.close();
     b.close();
     await sleep(120);
+  }
+
+
+  // ================= 8. 砖墙可击破 =================
+  console.log('\n8. 砖墙可击破');
+  {
+    // 本项需要砖墙，空旷地图下无从验证。
+    // 由 scripts/smoke-brick.js 在随机地图模式下单独覆盖
+    if (process.env.TANK_EMPTY_MAP === '1') {
+      console.log('  (空旷地图模式下无砖墙，由 smoke-brick 覆盖)');
+    } else {
+      const { a, b, idA } = await setupMatch('工兵', '旁观');
+      const map = a.map;
+
+      // 找一块与自己同行、右侧最近的砖墙
+      const me = a.tank(idA);
+      const row = Math.floor(me.y / TILE);
+      let brickCol = -1;
+      for (let c = Math.floor(me.x / TILE) + 1; c < map[row].length; c++) {
+        const t = map[row][c];
+        if (t === TILE_TYPE.BRICK) { brickCol = c; break; }
+        if (BLOCKING_TILES.has(t)) break; // 遇到钢块/边界则放弃
+      }
+
+      if (brickCol < 0) {
+        console.log('  (本局同行无砖墙，本项由 smoke-brick 覆盖)');
+      } else {
+        a.send(C2S.INPUT, { dir: 'right' });
+        await sleep(60);
+        a.send(C2S.INPUT, { dir: null });
+
+        a.clearEvents();
+        let broke = false;
+        const patches = [];
+        for (let i = 0; i < 12 && !broke; i++) {
+          a.send(C2S.FIRE, {});
+          await sleep(360);
+          for (const snap of a.snapshots) {
+            if (snap.mp) patches.push(...snap.mp);
+          }
+          broke = patches.some((p) => p.c === brickCol && p.r === row && p.v === TILE_TYPE.EMPTY);
+        }
+
+        const breakEvents = a.evts(EVENT_KIND.BRICK_BREAK);
+        check('产生砖墙受损事件', breakEvents.length >= 1, `${breakEvents.length} 次`);
+        check('事件含剩余耐久', breakEvents.some((e) => typeof e.hp === 'number'));
+        check('砖墙最终被击破', broke, `补丁 ${patches.length} 条`);
+        check('下发了地图增量', patches.length >= 1, `${patches.length} 条`);
+
+        // 双端地图必须一致，否则一方能过另一方过不去
+        const patchesB = [];
+        for (const snap of b.snapshots) if (snap.mp) patchesB.push(...snap.mp);
+        check('双端收到相同地图增量', patchesB.length === patches.length, `A${patches.length} B${patchesB.length}`);
+      }
+
+      a.close();
+      b.close();
+      await sleep(150);
+    }
+  }
+
+  // ================= 9. 坦克相撞伤害 =================
+  console.log('\n9. 坦克相撞伤害');
+  {
+    const { a, b, idA, idB } = await setupMatch('甲车', '乙车');
+    // 等无敌期结束，否则相撞不扣血
+    await sleep(2100);
+
+    const hpA0 = a.tank(idA)?.hp;
+    const hpB0 = a.tank(idB)?.hp;
+    check('相撞前双方满血', hpA0 === MAX_HP && hpB0 === MAX_HP, `${hpA0}/${hpB0}`);
+
+    a.clearEvents();
+
+    // 两车相向而行直到相撞。
+    // ⚠️ 方向必须每轮按**实时坐标**重算：
+    //    出生点随机，一次性算出的方向可能让两车背向而行，
+    //    各自撞到边界后彼此静止不动（实测踩过：20 秒间距反而拉大到 871px）。
+    let ramSeen = false;
+    for (let i = 0; i < 120; i++) {
+      const A = a.tank(idA);
+      const B = a.tank(idB);
+      if (!A?.alive || !B?.alive) break;
+      if (a.evts(EVENT_KIND.RAM).length > 0) {
+        ramSeen = true;
+        break;
+      }
+
+      const dx = B.x - A.x;
+      const dy = B.y - A.y;
+      // 先消除较大的那个轴的差距，双方同时朝对方靠拢
+      if (Math.abs(dy) > 12) {
+        a.send(C2S.INPUT, { dir: dy > 0 ? 'down' : 'up' });
+        b.send(C2S.INPUT, { dir: dy > 0 ? 'up' : 'down' });
+      } else {
+        a.send(C2S.INPUT, { dir: dx > 0 ? 'right' : 'left' });
+        b.send(C2S.INPUT, { dir: dx > 0 ? 'left' : 'right' });
+      }
+      await sleep(120);
+    }
+    a.send(C2S.INPUT, { dir: null });
+    b.send(C2S.INPUT, { dir: null });
+    await sleep(200);
+
+    check('产生相撞事件', ramSeen, `${a.evts(EVENT_KIND.RAM).length} 次`);
+
+    const ramHits = a.evts(EVENT_KIND.HIT).filter((e) => e.ram);
+    check('相撞产生伤害事件', ramHits.length >= 1, `${ramHits.length} 次`);
+    // 双方都应扣血 —— 撞人者不占便宜
+    const victims = new Set(ramHits.map((e) => e.targetId));
+    check('双方同时扣血', victims.size === 2, `受伤方 ${victims.size} 人`);
+
+    const hpA1 = a.tank(idA)?.hp ?? 0;
+    const hpB1 = a.tank(idB)?.hp ?? 0;
+    check('A 血量下降', hpA1 < hpA0, `${hpA0} → ${hpA1}`);
+    check('B 血量下降', hpB1 < hpB0, `${hpB0} → ${hpB1}`);
+
+    // 冷却生效：贴在一起也不会瞬间掉光血
+    check('相撞伤害有冷却（未瞬间清零）', hpA1 > 0 || hpB1 > 0, `${hpA1}/${hpB1}`);
+
+    // 双端血量必须一致
+    check(
+      '双端血量一致',
+      b.tank(idA)?.hp === hpA1 && b.tank(idB)?.hp === hpB1,
+      `B端 ${b.tank(idA)?.hp}/${b.tank(idB)?.hp}`
+    );
+
+    a.close();
+    b.close();
+    await sleep(150);
   }
 
   console.log(`\n${'─'.repeat(48)}`);

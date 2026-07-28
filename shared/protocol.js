@@ -61,6 +61,12 @@ export const EVENT_KIND = {
   RESPAWN: 'respawn',
   /** 房主移交 */
   HOST: 'host',
+  /** 开局倒计时读秒（3/2/1） */
+  COUNTDOWN: 'countdown',
+  /** 砖墙被击破 */
+  BRICK_BREAK: 'brick_break',
+  /** 坦克相撞 */
+  RAM: 'ram',
 };
 
 /** 错误码。客户端据此决定提示文案与是否可重试 */

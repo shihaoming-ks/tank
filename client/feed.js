@@ -75,14 +75,15 @@ export class Feed {
         case EVENT_KIND.HIT:
           // 撞墙的命中事件只用于特效，不写战报，否则会被刷屏
           if (ev.wall) break;
-          this.push(`${ev.actor} 击中了 ${ev.target}（剩余 ${ev.hp} 血）`, {
+          const verb = ev.ram ? '撞上了' : '击中了';
+        this.push(`${ev.actor} ${verb} ${ev.target}（剩余 ${ev.hp} 血）`, {
             color: ev.color,
             tone: 'hit',
           });
           break;
 
         case EVENT_KIND.KILL:
-          this.push(`${ev.actor} 淘汰了 ${ev.target}`, { color: ev.color, tone: 'kill' });
+          this.push(ev.ram ? `${ev.target} 因撞击被淘汰` : `${ev.actor} 淘汰了 ${ev.target}`, { color: ev.color, tone: 'kill' });
           break;
 
         case EVENT_KIND.RESPAWN:

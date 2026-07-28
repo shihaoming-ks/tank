@@ -11,12 +11,24 @@ import test from 'node:test';
 import {
   countTiles,
   createMap,
-  getSpawnPoints,
+  damageTile,
+  generateSpawnPoints,
+  getFallbackSpawnPoints,
   isBlocking,
+  isDestructible,
   isFullyConnected,
   validateMap,
 } from '../server/map.js';
-import { COLS, ROWS, TANK_SIZE, TILE, TILE_TYPE } from '../shared/constants.js';
+import {
+  BRICK_HP,
+  COLS,
+  MIN_SPAWN_DISTANCE,
+  ROOM_MAX,
+  ROWS,
+  TANK_SIZE,
+  TILE,
+  TILE_TYPE,
+} from '../shared/constants.js';
 
 /** 固定种子的伪随机数发生器（mulberry32），让随机生成可复现 */
 function seeded(seed) {
@@ -83,8 +95,8 @@ test('障碍比例稳定在设定区间（不会忽空旷忽拥挤）', () => {
   }
 
   for (const r of ratios) {
-    assert.ok(r > 0.1, `比例过低：${(r * 100).toFixed(1)}%`);
-    assert.ok(r < 0.28, `比例过高：${(r * 100).toFixed(1)}%`);
+    assert.ok(r > 0.06, `比例过低：${(r * 100).toFixed(1)}%`);
+    assert.ok(r < 0.18, `比例过高：${(r * 100).toFixed(1)}%`);
   }
 
   // 比例的波动幅度不应过大，否则每局手感差异明显
@@ -106,13 +118,14 @@ test('相同种子生成相同地图（可复现）', () => {
   assert.deepEqual(a, b);
 });
 
-test('出生点不与障碍重叠', () => {
+test('随机出生点不与障碍重叠', () => {
   const half = TANK_SIZE / 2;
 
   for (let seed = 0; seed < 30; seed++) {
-    const grid = createMap(seeded(seed));
+    const rng = seeded(seed);
+    const grid = createMap(rng);
 
-    getSpawnPoints().forEach((p, i) => {
+    generateSpawnPoints(grid, ROOM_MAX, rng).forEach((p, i) => {
       const c0 = Math.floor((p.x - half) / TILE);
       const c1 = Math.floor((p.x + half - 1) / TILE);
       const r0 = Math.floor((p.y - half) / TILE);
@@ -129,14 +142,104 @@ test('出生点不与障碍重叠', () => {
 
 test('所有出生点互相连通（不会出现孤岛）', () => {
   for (let seed = 0; seed < 50; seed++) {
-    const grid = createMap(seeded(seed));
-    assert.ok(isFullyConnected(grid), `seed=${seed} 生成了不连通的地图`);
+    const rng = seeded(seed);
+    const grid = createMap(rng);
+    const spawns = generateSpawnPoints(grid, ROOM_MAX, rng);
+    assert.ok(isFullyConnected(grid, spawns), `seed=${seed} 生成了不连通的地图`);
   }
+});
+
+test('随机出生点每局不同', () => {
+  const sets = new Set();
+  for (let i = 0; i < 12; i++) {
+    const grid = createMap();
+    sets.add(JSON.stringify(generateSpawnPoints(grid, ROOM_MAX)));
+  }
+  assert.ok(sets.size >= 10, `12 次仅 ${sets.size} 种不同出生点组合`);
+});
+
+test('出生点之间保持最小间距', () => {
+  for (let seed = 0; seed < 40; seed++) {
+    const rng = seeded(seed);
+    const grid = createMap(rng);
+    const pts = generateSpawnPoints(grid, ROOM_MAX, rng);
+    assert.equal(pts.length, ROOM_MAX, `seed=${seed} 出生点数量不足`);
+
+    for (let i = 0; i < pts.length; i++) {
+      for (let j = i + 1; j < pts.length; j++) {
+        const d = Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
+        assert.ok(
+          d >= MIN_SPAWN_DISTANCE,
+          `seed=${seed} 出生点 ${i}/${j} 间距仅 ${d.toFixed(0)}px，低于 ${MIN_SPAWN_DISTANCE}`
+        );
+      }
+    }
+  }
+});
+
+test('砖墙需 BRICK_HP 次命中才被击破', () => {
+  const grid = createMap(seeded(3));
+  // 找一块完好砖墙
+  let target = null;
+  for (let r = 1; r < ROWS - 1 && !target; r++) {
+    for (let c = 1; c < COLS - 1; c++) {
+      if (grid[r][c] === TILE_TYPE.BRICK) {
+        target = { r, c };
+        break;
+      }
+    }
+  }
+  assert.ok(target, '地图中应存在砖墙');
+
+  for (let i = 1; i < BRICK_HP; i++) {
+    const res = damageTile(grid, target.c, target.r);
+    assert.equal(res.changed, true, `第 ${i} 次命中应生效`);
+    assert.equal(res.broken, false, `第 ${i} 次命中不应击破`);
+    assert.ok(isBlocking(grid[target.r][target.c]), `第 ${i} 次命中后仍应阻挡`);
+  }
+
+  const last = damageTile(grid, target.c, target.r);
+  assert.equal(last.broken, true, `第 ${BRICK_HP} 次命中应击破`);
+  assert.equal(grid[target.r][target.c], TILE_TYPE.EMPTY);
+  assert.equal(isBlocking(grid[target.r][target.c]), false, '击破后应可通行');
+});
+
+test('钢块与边界不可被击破', () => {
+  const grid = createMap(seeded(5));
+  // 边界
+  const before = grid[0][5];
+  const r1 = damageTile(grid, 5, 0);
+  assert.equal(r1.changed, false);
+  assert.equal(grid[0][5], before);
+
+  // 找一块钢块
+  for (let r = 1; r < ROWS - 1; r++) {
+    for (let c = 1; c < COLS - 1; c++) {
+      if (grid[r][c] === TILE_TYPE.STEEL) {
+        const res = damageTile(grid, c, r);
+        assert.equal(res.changed, false, '钢块不应被击破');
+        assert.equal(grid[r][c], TILE_TYPE.STEEL);
+        return;
+      }
+    }
+  }
+});
+
+test('isDestructible 只对砖墙成立', () => {
+  assert.equal(isDestructible(TILE_TYPE.BRICK), true);
+  assert.equal(isDestructible(TILE_TYPE.BRICK_2), true);
+  assert.equal(isDestructible(TILE_TYPE.BRICK_1), true);
+  assert.equal(isDestructible(TILE_TYPE.STEEL), false);
+  assert.equal(isDestructible(TILE_TYPE.BORDER), false);
+  assert.equal(isDestructible(TILE_TYPE.EMPTY), false);
 });
 
 test('validateMap 对合法地图返回空问题列表', () => {
   for (let seed = 0; seed < 20; seed++) {
-    const problems = validateMap(createMap(seeded(seed)));
+    const rng = seeded(seed);
+    const grid = createMap(rng);
+    const spawns = generateSpawnPoints(grid, ROOM_MAX, rng);
+    const problems = validateMap(grid, spawns);
     assert.deepEqual(problems, [], `seed=${seed}: ${problems.join('; ')}`);
   }
 });
@@ -159,5 +262,11 @@ test('isBlocking 正确区分可通行与阻挡', () => {
   assert.equal(isBlocking(TILE_TYPE.EMPTY), false);
   assert.equal(isBlocking(TILE_TYPE.BORDER), true);
   assert.equal(isBlocking(TILE_TYPE.BRICK), true);
+  assert.equal(isBlocking(TILE_TYPE.BRICK_2), true, '破损砖墙仍应阻挡');
+  assert.equal(isBlocking(TILE_TYPE.BRICK_1), true, '破损砖墙仍应阻挡');
   assert.equal(isBlocking(TILE_TYPE.STEEL), true);
+});
+
+test('坦克碰撞盒小于一格，可穿过单格通道', () => {
+  assert.ok(TANK_SIZE < TILE, `TANK_SIZE(${TANK_SIZE}) 必须小于 TILE(${TILE})`);
 });

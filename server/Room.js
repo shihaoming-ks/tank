@@ -13,21 +13,39 @@
 import {
   BULLET_SPEED,
   COLORS,
+  COUNTDOWN_MS,
   END_REASON,
   FIRE_COOLDOWN_MS,
   MATCH_DURATION_MS,
   MAX_HP,
   PHASE,
+  RAM_COOLDOWN_MS,
+  RAM_DAMAGE,
   RESPAWN_INVULN_MS,
   ROOM_MAX,
   ROOM_MIN,
+  MAP_W,
   TANK_SPEED,
   TICK_MS,
+  TILE,
 } from '../shared/constants.js';
 import { S2C, EVENT_KIND, encode } from '../shared/protocol.js';
 import { logger } from './logger.js';
-import { createMap, getSpawnPoints, validateMap } from './map.js';
-import { advanceBullet, bulletSpawnPos, findBulletHit, tryMoveTank } from './physics.js';
+import {
+  createMap,
+  damageTile,
+  generateSpawnPoints,
+  getFallbackSpawnPoints,
+  isDestructible,
+  validateMap,
+} from './map.js';
+import {
+  advanceBullet,
+  bulletSpawnPos,
+  findBulletHit,
+  findTankCollisions,
+  tryMoveTank,
+} from './physics.js';
 
 let playerSeq = 0;
 let bulletSeq = 0;
@@ -53,7 +71,8 @@ export class Room {
      * @type {number[][]}
      */
     this.grid = createMap();
-    this.spawns = getSpawnPoints();
+    /** 本局出生点，每局随机生成 */
+    this.spawns = getFallbackSpawnPoints();
     /** @type {Array<object>} 活跃子弹 */
     this.bullets = [];
     /**
@@ -76,6 +95,10 @@ export class Room {
     /** 对局序号。每开一局 +1，客户端据此识别“换局”并重置本地帧号基准 */
     this.matchId = 0;
     this.startedAt = 0;
+    /** 倒计时结束时间戳。0 表示不在倒计时 */
+    this.countdownUntil = 0;
+    /** 上一次广播的倒计时秒数，避免重复推送同一秒 */
+    this.lastCountdownSec = 0;
     /** @type {NodeJS.Timeout|null} */
     this.timer = null;
     /** 上一帧时间戳，用于计算真实 dt */
@@ -86,6 +109,12 @@ export class Room {
      * @type {Set<string>}
      */
     this.needMap = new Set();
+    /**
+     * 本帧发生变更的地图格。砖墙被击破后需增量下发，
+     * 全量重发地图（约 600B）在 30Hz 下会让流量翻十倍。
+     * @type {Array<{c:number,r:number,v:number}>}
+     */
+    this.mapPatches = [];
 
     // 地图设计错误必须在启动阶段暴露，而非对战中途才发现坦克卡在墙里
     const problems = validateMap(this.grid);
@@ -222,39 +251,60 @@ export class Room {
 
     // 玩家退出可能直接触发对局结束（仅剩 1 人 → 胜利；不足 2 人 → 中止）。
     // 不处理会导致对手退出后另一方永远卡在战场里。
-    if (this.phase === PHASE.PLAYING) this.checkEnd(Date.now());
+    if (this.phase === PHASE.PLAYING || this.phase === PHASE.COUNTDOWN) {
+      this.checkEnd(Date.now());
+    }
   }
 
   // ---------------- 对局生命周期 ----------------
 
-  /** 开局：重新生成地图、重置全部坦克状态并启动 tick 循环 */
+  /** 开局：重新生成地图与出生点，进入倒计时阶段 */
   startGame() {
-    this.phase = PHASE.PLAYING;
+    // 先进入倒计时：玩家可见地图与彼此位置，但不能操作
+    this.phase = PHASE.COUNTDOWN;
     // 注意：故意不重置 this.tick（原因见 constructor 中的说明），
     // 换局靠 matchId 辨识
     this.matchId++;
-    this.startedAt = Date.now();
+    const now = Date.now();
+    this.countdownUntil = now + COUNTDOWN_MS;
+    this.lastCountdownSec = 0;
+    // startedAt 指向倒计时结束时刻，使对局时限不包含倒计时
+    this.startedAt = this.countdownUntil;
     this.bullets = [];
     this.pendingEvents = [];
+    this.mapPatches = [];
     this.result = null;
 
     // 每局重新生成地图，提升重复对战的新鲜感
     this.grid = createMap();
-    const problems = validateMap(this.grid);
+    // 出生点也每局随机，但保证彼此间距 ≥ MIN_SPAWN_DISTANCE
+    this.spawns = generateSpawnPoints(this.grid, ROOM_MAX);
+
+    const problems = validateMap(this.grid, this.spawns);
     if (problems.length) {
       logger.error({ evt: 'map_invalid', roomId: this.id, problems });
     }
 
+    // 随机洗牌出生点分配，避免固定 slot 总得到同一位置
+    const shuffled = [...this.spawns];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    let idx = 0;
     for (const p of this.players.values()) {
-      const spawn = this.spawns[p.slot];
+      const spawn = shuffled[idx++ % shuffled.length];
       p.x = spawn.x;
       p.y = spawn.y;
-      p.dir = p.slot < 2 ? 'down' : 'up';
+      // 服向改为指向地图中心，无论出生在哪都面向战场
+      p.dir = spawn.x < MAP_W / 2 ? 'right' : 'left';
       p.moveDir = null;
       p.hp = MAX_HP;
       p.alive = true;
       p.invulnUntil = this.startedAt + RESPAWN_INVULN_MS;
       p.lastFireAt = 0;
+      p.lastRamAt = 0;
       p.kills = 0;
       p.deaths = 0;
       // 地图每局重新生成，必须重新下发给所有玩家
@@ -309,6 +359,14 @@ export class Room {
 
     const tanks = [...this.players.values()];
 
+    // ---- 0. 倒计时阶段：只广播画面，不推进任何游戏逻辑 ----
+    if (this.phase === PHASE.COUNTDOWN) {
+      this.stepCountdown(now);
+      this.broadcastSnapshot(now);
+      this.flushEvents();
+      return;
+    }
+
     // ---- 1. 移动 ----
     for (const tank of tanks) {
       if (!tank.alive || !tank.moveDir) continue;
@@ -319,16 +377,116 @@ export class Room {
       tank.y = next.y;
     }
 
-    // ---- 2. 子弹推进与命中 ----
+    // ---- 2. 坦克相撞伤害 ----
+    // 放在移动之后：此时位置已是本帧最终值，判定不会与移动结果矛盾
+    this.stepRamDamage(tanks, now);
+
+    // ---- 3. 子弹推进与命中 ----
     this.stepBullets(dt, tanks, now);
 
-    // ---- 3. 结束判定 ----
+    // ---- 4. 结束判定 ----
     // 必须在广播快照前执行：若本帧产生胜负，应直接走 endGame 的广播路径，
     // 避免先发一帧普通快照再发 over，造成客户端状态跳变
     if (this.checkEnd(now)) return;
 
     this.broadcastSnapshot(now);
     this.flushEvents();
+  }
+
+  /**
+   * 推进倒计时。到点后切入 PLAYING。
+   *
+   * 读秒事件只在秒数变化时下发一次，避免 30Hz 刷屏。
+   */
+  stepCountdown(now) {
+    const remainMs = this.countdownUntil - now;
+
+    if (remainMs <= 0) {
+      this.phase = PHASE.PLAYING;
+      this.countdownUntil = 0;
+      // 倒计时期间累积的移动意图必须清空，
+      // 否则提前按住方向键的玩家会在开局瞬间抢跑
+      for (const p of this.players.values()) p.moveDir = null;
+
+      this.pushEvent({ kind: EVENT_KIND.COUNTDOWN, n: 0 });
+      this.broadcastRoom();
+      logger.info({ evt: 'countdown_end', roomId: this.id, matchId: this.matchId });
+      return;
+    }
+
+    const sec = Math.ceil(remainMs / 1000);
+    if (sec !== this.lastCountdownSec) {
+      this.lastCountdownSec = sec;
+      this.pushEvent({ kind: EVENT_KIND.COUNTDOWN, n: sec });
+    }
+  }
+
+  /**
+   * 坦克相撞造成双向伤害。
+   *
+   * ⚠️ 冷却是必需的：两车贴在一起时每帧都满足碰撞条件，
+   *    无冷却会在 30Hz 下不到一秒扣光双方全部血量。
+   *    冷却按**每辆车独立**计时，避免一方刚被撞完又立刻被另一车追撞。
+   */
+  stepRamDamage(tanks, now) {
+    for (const [a, b] of findTankCollisions(tanks)) {
+      // 无敌期内不受相撞伤害，与子弹规则保持一致
+      const aProtected = now < a.invulnUntil || now - a.lastRamAt < RAM_COOLDOWN_MS;
+      const bProtected = now < b.invulnUntil || now - b.lastRamAt < RAM_COOLDOWN_MS;
+      if (aProtected && bProtected) continue;
+
+      const x = Math.round((a.x + b.x) / 2);
+      const y = Math.round((a.y + b.y) / 2);
+      this.pushEvent({ kind: EVENT_KIND.RAM, x, y, actor: a.nickname, target: b.nickname });
+
+      // 双方同时扣血，撞人者不占便宜 —— 否则会演变成"互相撞死"的下水道玩法
+      if (!aProtected) this.applyRamDamage(a, b, now, x, y);
+      if (!bProtected) this.applyRamDamage(b, a, now, x, y);
+    }
+  }
+
+  /** 结算一次相撞伤害。attacker 仅用于战报归属，不计击杀 */
+  applyRamDamage(victim, other, now, x, y) {
+    victim.lastRamAt = now;
+    victim.hp = Math.max(0, victim.hp - RAM_DAMAGE);
+
+    this.pushEvent({
+      kind: EVENT_KIND.HIT,
+      x,
+      y,
+      targetId: victim.id,
+      target: victim.nickname,
+      actor: other.nickname,
+      color: other.color,
+      hp: victim.hp,
+      ram: 1,
+    });
+
+    logger.info({
+      evt: 'ram_hit',
+      roomId: this.id,
+      victimId: victim.id,
+      otherId: other.id,
+      hp: victim.hp,
+    });
+
+    if (victim.hp > 0) return;
+
+    victim.alive = false;
+    victim.moveDir = null;
+    victim.deaths++;
+    // 相撞致死不计对方击杀数：这不是主动击杀，计入会鼓励自杀式撞击
+
+    this.pushEvent({
+      kind: EVENT_KIND.KILL,
+      x: Math.round(victim.x),
+      y: Math.round(victim.y),
+      targetId: victim.id,
+      target: victim.nickname,
+      actor: other.nickname,
+      color: other.color,
+      ram: 1,
+    });
   }
 
   /** 推进所有子弹，处理撞墙与命中 */
@@ -341,6 +499,25 @@ export class Room {
       bullet.y = next.y;
 
       if (next.hitWall) {
+        // 砖墙可被击破：扣耐久，归零则变空地
+        let broken = false;
+        let brickHp = null;
+        if (next.col !== undefined && isDestructible(this.grid[next.row]?.[next.col])) {
+          const r = damageTile(this.grid, next.col, next.row);
+          broken = r.broken;
+          brickHp = r.hp;
+          // 地图已变更，必须让客户端知道，否则会看到子弹穿过"已消失"的墙
+          this.mapPatches.push({ c: next.col, r: next.row, v: this.grid[next.row][next.col] });
+
+          this.pushEvent({
+            kind: EVENT_KIND.BRICK_BREAK,
+            x: next.col * TILE + TILE / 2,
+            y: next.row * TILE + TILE / 2,
+            hp: brickHp,
+            broken: broken ? 1 : 0,
+          });
+        }
+
         // 撞墙也给反馈，否则玩家不知道子弹打到哪了
         this.pushEvent({
           kind: EVENT_KIND.HIT,
@@ -421,7 +598,9 @@ export class Room {
    * @returns {boolean} 是否已结束
    */
   checkEnd(now) {
-    if (this.phase !== PHASE.PLAYING) return false;
+    // 倒计时阶段也需判定：此时若有人退出导致不足 2 人，
+    // 应立即中止而非等倒计时走完再开一局空对局
+    if (this.phase !== PHASE.PLAYING && this.phase !== PHASE.COUNTDOWN) return false;
 
     const all = [...this.players.values()];
     const alive = all.filter((p) => p.alive);
@@ -506,6 +685,8 @@ export class Room {
    * 否则贴墙时无法调整射击方向。
    */
   setMoveIntent(player, dir) {
+    // 倒计时期间禁止移动：此时 phase 为 COUNTDOWN 而非 PLAYING，
+    // 天然被此判断拦下，无需额外分支
     if (this.phase !== PHASE.PLAYING || !player.alive) return;
     player.moveDir = dir;
     if (dir) player.dir = dir;
@@ -513,6 +694,7 @@ export class Room {
 
   /** 处理射击意图。冷却完全由服务端裁决，客户端只需无脑上报 */
   fire(player) {
+    // 同 setMoveIntent：倒计时阶段 phase 不是 PLAYING，开火自动无效
     if (this.phase !== PHASE.PLAYING || !player.alive) return;
 
     const now = Date.now();
@@ -606,6 +788,8 @@ export class Room {
         y: Math.round(b.y),
         color: b.color,
       })),
+      // 倒计时剩余毫秒。>0 表示尚未开打，客户端据此显示 3-2-1 并禁用操作提示
+      cd: this.countdownUntil > 0 ? Math.max(0, this.countdownUntil - now) : 0,
     };
   }
 
@@ -633,6 +817,8 @@ export class Room {
    */
   broadcastSnapshot(now = Date.now()) {
     const base = this.snapshot(now);
+    // 地图增量：本帧被击破的砖墙。收到全量地图的玩家无需再收增量
+    if (this.mapPatches.length) base.mp = this.mapPatches;
     const shared = this.needMap.size < this.players.size ? encode(S2C.SNAPSHOT, base) : null;
 
     for (const player of this.players.values()) {
@@ -652,6 +838,10 @@ export class Room {
         });
       }
     }
+
+    // 增量已下发，清空。必须在此处而非 step 末尾 ——
+    // endGame 也会调用 broadcastSnapshot，遗漏会导致重复下发
+    if (this.mapPatches.length) this.mapPatches = [];
   }
 
   broadcastRoom() {

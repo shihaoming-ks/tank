@@ -154,7 +154,9 @@ export class RoomManager {
         return;
       }
       // 对局中不允许中途加入，否则新玩家会以 0 血进场，规则不清晰
-      if (room.phase === PHASE.PLAYING) {
+      // 倒计时阶段同样不允许中途加入：此时出生点已分配完毕，
+      // 新玩家会没有合法出生位置
+      if (room.phase === PHASE.PLAYING || room.phase === PHASE.COUNTDOWN) {
         this.sendError(ws, ERR.ROOM_IN_GAME);
         return;
       }
@@ -200,7 +202,8 @@ export class RoomManager {
       return;
     }
     // 已在对局中则忽略，避免重复点击把正在进行的对局重置
-    if (room.phase === PHASE.PLAYING) return;
+    // 已在对局中（含倒计时）则忽略，防止重复点击重置对局
+    if (room.phase === PHASE.PLAYING || room.phase === PHASE.COUNTDOWN) return;
 
     room.startGame();
   }

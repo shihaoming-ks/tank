@@ -246,7 +246,8 @@ async function main() {
   b.send(C2S.START, {});
   await sleep(150);
   const playing = b.last(S2C.ROOM);
-  check('阶段切换为 playing', playing?.phase === 'playing', playing?.phase);
+  // 开局先进入倒计时阶段（3 秒准备期），倒计时结束后才转 playing
+  check('阶段切换为 countdown', playing?.phase === 'countdown', playing?.phase);
 
   const g = new Client('G');
   await g.connect();

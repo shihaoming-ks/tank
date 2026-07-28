@@ -107,7 +107,10 @@ export function tryMoveTank(tank, dir, dt, speed, grid, others = []) {
  *    但一旦调高子弹速度或降低帧率，就会出现"穿墙"（tunneling）。
  *    按不超过半个子弹尺寸的步长细分，从根源上消除此类 bug。
  *
- * @returns {{x, y, hitWall: boolean}}
+ * 命中墙体时额外返回**所在格坐标**，供上层判断是否为可破坏砖墙。
+ * 由物理层给出格坐标而非让上层反算，避免两处取整逻辑不一致。
+ *
+ * @returns {{x, y, hitWall: boolean, col?: number, row?: number}}
  */
 export function advanceBullet(bullet, dt, speed, grid) {
   const vec = DIR_VEC[bullet.dir];
@@ -125,12 +128,36 @@ export function advanceBullet(bullet, dt, speed, grid) {
     x += vec.x * stepDist;
     y += vec.y * stepDist;
 
-    if (!insideMap(x, y, BULLET_SIZE) || hitsWall(grid, x, y, BULLET_SIZE)) {
+    if (!insideMap(x, y, BULLET_SIZE)) {
       return { x, y, hitWall: true };
+    }
+    const cell = firstBlockingCell(grid, x, y, BULLET_SIZE);
+    if (cell) {
+      return { x, y, hitWall: true, col: cell.col, row: cell.row };
     }
   }
 
   return { x, y, hitWall: false };
+}
+
+/**
+ * 返回实体覆盖范围内第一个阻挡格的坐标，无则 null。
+ * 与 hitsWall 同源，但多返回格坐标，供砖墙破坏使用。
+ */
+export function firstBlockingCell(grid, cx, cy, size) {
+  const half = size / 2;
+  const c0 = Math.floor((cx - half) / TILE);
+  const c1 = Math.floor((cx + half - 1) / TILE);
+  const r0 = Math.floor((cy - half) / TILE);
+  const r1 = Math.floor((cy + half - 1) / TILE);
+
+  for (let r = r0; r <= r1; r++) {
+    for (let c = c0; c <= c1; c++) {
+      if (grid[r]?.[c] === undefined) return { col: c, row: r };
+      if (isBlocking(grid[r][c])) return { col: c, row: r };
+    }
+  }
+  return null;
 }
 
 /**
@@ -157,6 +184,35 @@ export function findBulletHit(bullet, tanks, now) {
     }
   }
   return null;
+}
+
+/**
+ * 找出所有相互碰撞的坦克对。
+ *
+ * ⚠️ 判定用**略大于**碰撞盒的范围：tryMoveTank 已阻止真正重叠，
+ *    两车最多贴在一起而非嵌套。若严格用 TANK_SIZE 判重叠，
+ *    则永远检测不到相撞（`|dx| < TANK_SIZE` 恰好为假）。
+ *
+ * 容差取 5px 而非 2px：坦克按真实 dt 积分，停下的位置是连续值，
+ * 两车贴住时中心距会落在 TANK_SIZE ± 数像素的区间内。
+ * 实测 2px 容差下出现过 dx=28（阈值 28）恰好判不中而漏检的情况。
+ *
+ * @param {Array} tanks
+ * @returns {Array<[object, object]>} 碰撞对
+ */
+export function findTankCollisions(tanks) {
+  const pairs = [];
+  const reach = TANK_SIZE + 5;
+
+  for (let i = 0; i < tanks.length; i++) {
+    for (let j = i + 1; j < tanks.length; j++) {
+      const a = tanks[i];
+      const b = tanks[j];
+      if (!a.alive || !b.alive) continue;
+      if (aabbOverlap(a.x, a.y, reach, b.x, b.y, reach)) pairs.push([a, b]);
+    }
+  }
+  return pairs;
 }
 
 /**

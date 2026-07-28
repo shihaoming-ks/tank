@@ -12,11 +12,12 @@
     "start": "node server/index.js",
     "dev:empty-map": "TANK_EMPTY_MAP=1 node server/index.js",
     "test": "node --test test/*.test.js",
-    "smoke": "npm run smoke:room && npm run smoke:move && npm run smoke:combat",
+    "smoke": "npm run smoke:room && npm run smoke:move && npm run smoke:brick && npm run smoke:combat",
     "smoke:room": "node scripts/smoke-room.js",
     "smoke:move": "node scripts/smoke-move.js",
     "smoke:combat": "node scripts/smoke-combat.js",
-    "smoke:all": "node scripts/smoke-all.js"
+    "smoke:all": "node scripts/smoke-all.js",
+    "smoke:brick": "node scripts/smoke-brick.js"
   },
   "keywords": [
     "game",

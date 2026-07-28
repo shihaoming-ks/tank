@@ -15,9 +15,14 @@
 
 import {
   BLOCKING_TILES,
+  BRICK_BY_HP,
+  BRICK_HP_OF,
   COLS,
+  DESTRUCTIBLE_TILES,
   MAP_FILL_RATIO,
   MAP_STEEL_RATIO,
+  MIN_SPAWN_DISTANCE,
+  ROOM_MAX,
   ROWS,
   SPAWN_SAFE_RADIUS,
   TANK_SIZE,
@@ -32,11 +37,88 @@ export function isBlocking(tile) {
   return BLOCKING_TILES.has(tile);
 }
 
+/** 某个图块是否可被子弹击破 */
+export function isDestructible(tile) {
+  return DESTRUCTIBLE_TILES.has(tile);
+}
+
 /**
- * 出生点（像素坐标，坦克中心）。
- * 四角内缩，顺序与玩家 slot 对应：0 左上、1 右上、2 左下、3 右下。
+ * 对格子施加一次子弹伤害。
+ *
+ * 砖墙有 BRICK_HP 点耐久，每次命中降一级，归零后变为空地。
+ * 耐久直接编码进图块值（BRICK / BRICK_2 / BRICK_1），
+ * 好处是地图始终是纯数字二维数组 —— 快照序列化、客户端渲染
+ * 都无需为耐久单开一层数据结构。
+ *
+ * @returns {{ changed: boolean, broken: boolean, hp: number }}
  */
-export function getSpawnPoints() {
+export function damageTile(grid, col, row) {
+  const tile = grid[row]?.[col];
+  if (!isDestructible(tile)) return { changed: false, broken: false, hp: 0 };
+
+  const hp = (BRICK_HP_OF[tile] ?? 0) - 1;
+  grid[row][col] = BRICK_BY_HP[Math.max(0, hp)];
+  return { changed: true, broken: hp <= 0, hp: Math.max(0, hp) };
+}
+
+/**
+ * 生成随机出生点（像素坐标，坦克中心）。
+ *
+ * 位置每局随机，但受两条约束：
+ *   1. 所在格及其四邻必须为空地 —— 保证不会一出生就卡在墙里
+ *   2. 彼此间距 ≥ MIN_SPAWN_DISTANCE —— 否则倒计时一结束就是贴脸互射，
+ *      运气成分过大
+ *
+ * 采用"随机取点 + 拒绝采样"而非精心构造：
+ * 实现简单且分布自然，失败时退化为四角固定点，保证一定能开局。
+ *
+ * @param {number[][]} grid
+ * @param {number} count 需要的出生点数量
+ * @param {() => number} rng
+ * @returns {Array<{x:number,y:number}>}
+ */
+export function generateSpawnPoints(grid, count = ROOM_MAX, rng = Math.random) {
+  const candidates = [];
+
+  // 收集所有"自身与四邻皆为空地"的格子作为候选
+  for (let r = 1; r < ROWS - 1; r++) {
+    for (let c = 1; c < COLS - 1; c++) {
+      if (isBlocking(grid[r][c])) continue;
+      if (
+        isBlocking(grid[r - 1][c]) ||
+        isBlocking(grid[r + 1][c]) ||
+        isBlocking(grid[r][c - 1]) ||
+        isBlocking(grid[r][c + 1])
+      ) {
+        continue;
+      }
+      candidates.push({ x: c * TILE + TILE / 2, y: r * TILE + TILE / 2 });
+    }
+  }
+
+  // 多次尝试整组采样：单点贪心容易走进"最后一个点无处可放"的死角
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const picked = [];
+    const pool = [...candidates];
+
+    while (picked.length < count && pool.length > 0) {
+      const idx = Math.floor(rng() * pool.length);
+      const p = pool.splice(idx, 1)[0];
+      const farEnough = picked.every(
+        (q) => Math.hypot(p.x - q.x, p.y - q.y) >= MIN_SPAWN_DISTANCE
+      );
+      if (farEnough) picked.push(p);
+    }
+
+    if (picked.length === count) return picked;
+  }
+
+  // 兜底：退化为四角固定点。宁可位置固定，也不能开不了局
+  return getFallbackSpawnPoints().slice(0, count);
+}
+
+/** 兜底出生点：四角内缩，顺序对应 slot */
+export function getFallbackSpawnPoints() {
   const inset = 2.5; // 单位：格
   return [
     { x: inset * TILE, y: inset * TILE },
@@ -46,9 +128,14 @@ export function getSpawnPoints() {
   ];
 }
 
+/** @deprecated 保留以兼容旧调用，等价于 getFallbackSpawnPoints */
+export function getSpawnPoints() {
+  return getFallbackSpawnPoints();
+}
+
 /** 出生点对应的格坐标 */
-function spawnCells() {
-  return getSpawnPoints().map((p) => ({
+function spawnCells(points = getFallbackSpawnPoints()) {
+  return points.map((p) => ({
     col: Math.floor(p.x / TILE),
     row: Math.floor(p.y / TILE),
   }));
@@ -103,6 +190,11 @@ function emptyWithBorder() {
  *   - 逐格随机会产生大量孤立单格，视觉杂乱且掩体功能差
  *   - 块状（1×1 ~ 2×2）更接近人工设计的掩体形态
  *   - 中心对称保证四个出生角机会均等，避免某个角天然吃亏
+ *
+ * ⚠️ 图块类型按**格**而非按块决定：
+ *    整块同类型时，一个 2×2 块就占 4 格，钢/砖比例的方差极大
+ *    （实测在目标 45% 下出现过 10%~45% 的剧烈波动）。
+ *    逐格决定后比例稳定，且同一块内混合两种材质在视觉上也更耐看。
  */
 function generateCandidate(rng) {
   const grid = emptyWithBorder();
@@ -124,14 +216,13 @@ function generateCandidate(rng) {
 
     // 2×2 的块占 35%，其余为 1×1，形态更自然
     const size = rng() < 0.35 ? 2 : 1;
-    const type = rng() < MAP_STEEL_RATIO ? TILE_TYPE.STEEL : TILE_TYPE.BRICK;
 
-    placed += tryPlaceBlock(grid, safe, col, row, size, type);
+    placed += tryPlaceBlock(grid, safe, col, row, size, rng);
 
     // 中心对称镜像点
     const mCol = COLS - 1 - col - (size - 1);
     const mRow = ROWS - 1 - row - (size - 1);
-    placed += tryPlaceBlock(grid, safe, mCol, mRow, size, type);
+    placed += tryPlaceBlock(grid, safe, mCol, mRow, size, rng);
   }
 
   return grid;
@@ -160,9 +251,10 @@ function buildSafeMask() {
 
 /**
  * 尝试放置一个 size×size 的块。
+ * 类型逐格决定（见 generateCandidate 的说明）。
  * @returns {number} 实际填充的格数
  */
-function tryPlaceBlock(grid, safe, col, row, size, type) {
+function tryPlaceBlock(grid, safe, col, row, size, rng) {
   // 先整体校验，避免出现半个块被截断的碎片
   for (let dr = 0; dr < size; dr++) {
     for (let dc = 0; dc < size; dc++) {
@@ -177,7 +269,8 @@ function tryPlaceBlock(grid, safe, col, row, size, type) {
   let n = 0;
   for (let dr = 0; dr < size; dr++) {
     for (let dc = 0; dc < size; dc++) {
-      grid[row + dr][col + dc] = type;
+      grid[row + dr][col + dc] =
+        rng() < MAP_STEEL_RATIO ? TILE_TYPE.STEEL : TILE_TYPE.BRICK;
       n++;
     }
   }
@@ -194,8 +287,8 @@ function tryPlaceBlock(grid, safe, col, row, size, type) {
  * 坦克为 TANK_SIZE(24)、格为 TILE(32)，虽能穿单格通道，
  * 但格中心间的移动需保证目标格空闲，故用格中心 BFS 即可近似。
  */
-export function isFullyConnected(grid) {
-  const cells = spawnCells();
+export function isFullyConnected(grid, points) {
+  const cells = spawnCells(points);
   const start = cells[0];
   if (isBlocking(grid[start.row]?.[start.col])) return false;
 
@@ -232,11 +325,11 @@ export function isFullyConnected(grid) {
  *
  * @returns {string[]} 问题描述数组，空数组表示通过
  */
-export function validateMap(grid) {
+export function validateMap(grid, points = getFallbackSpawnPoints()) {
   const problems = [];
   const half = TANK_SIZE / 2;
 
-  getSpawnPoints().forEach((p, i) => {
+  points.forEach((p, i) => {
     const c0 = Math.floor((p.x - half) / TILE);
     const c1 = Math.floor((p.x + half - 1) / TILE);
     const r0 = Math.floor((p.y - half) / TILE);
@@ -251,7 +344,7 @@ export function validateMap(grid) {
     }
   });
 
-  if (!isFullyConnected(grid)) {
+  if (!isFullyConnected(grid, points)) {
     problems.push('出生点之间不连通，存在孤岛');
   }
 
@@ -265,8 +358,9 @@ export function countTiles(grid) {
     for (const tile of row) {
       if (tile === TILE_TYPE.EMPTY) stat.empty++;
       else if (tile === TILE_TYPE.BORDER) stat.border++;
-      else if (tile === TILE_TYPE.BRICK) stat.brick++;
       else if (tile === TILE_TYPE.STEEL) stat.steel++;
+      // 破损砖墙仍计入 brick，便于统计障碍总量
+      else if (isDestructible(tile)) stat.brick++;
     }
   }
   return stat;
