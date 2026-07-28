@@ -11,6 +11,8 @@ import { DIR, NICKNAME_MAX_LEN, NICKNAME_MIN_LEN, ROOM_ID_LEN } from './constant
 export const C2S = {
   /** 创建或加入房间 { roomId?, nickname } */
   JOIN: 'join',
+  /** 断线恢复 { roomId, resumeToken } */
+  RESUME: 'resume',
   /** 主动离开 {} */
   LEAVE: 'leave',
   /** 房主开局 {} */
@@ -47,6 +49,8 @@ export const S2C = {
 export const EVENT_KIND = {
   /** 玩家加入房间 */
   JOIN: 'join',
+  /** 断线恢复 { roomId, resumeToken } */
+  RESUME: 'resume',
   /** 玩家离开房间 */
   LEAVE: 'leave',
   /** 对局开始 */
@@ -77,6 +81,7 @@ export const ERR = {
   ROOM_NOT_FOUND: 'ROOM_NOT_FOUND',
   ROOM_FULL: 'ROOM_FULL',
   ROOM_IN_GAME: 'ROOM_IN_GAME',
+  BAD_RESUME: 'BAD_RESUME',
   NOT_IN_ROOM: 'NOT_IN_ROOM',
   NOT_HOST: 'NOT_HOST',
   NOT_ENOUGH_PLAYERS: 'NOT_ENOUGH_PLAYERS',
@@ -91,6 +96,7 @@ export const ERR_TEXT = {
   [ERR.ROOM_NOT_FOUND]: '房间不存在，请检查房间号',
   [ERR.ROOM_FULL]: '房间已满',
   [ERR.ROOM_IN_GAME]: '该房间对局已开始',
+  [ERR.BAD_RESUME]: '重连凭证无效或已过期',
   [ERR.NOT_IN_ROOM]: '你当前不在任何房间',
   [ERR.NOT_HOST]: '只有房主可以开始对局',
   [ERR.NOT_ENOUGH_PLAYERS]: '至少需要 2 名玩家才能开始',

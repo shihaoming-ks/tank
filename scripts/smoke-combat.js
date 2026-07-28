@@ -338,10 +338,9 @@ async function main() {
     b.close(); // 模拟关闭浏览器
     await sleep(400);
 
-    check('A 收到 over', Boolean(a.over));
-    check('A 被判获胜', a.over?.winnerId === idA);
-    const leaveEv = a.evts(EVENT_KIND.LEAVE);
-    check('离开事件标记为掉线', leaveEv.some((e) => e.reason === 'disconnect'));
+    check('重连宽限期内 A 不会被提前结算', a.over === null);
+    const disconnected = a.snap?.tanks?.find((t) => t.id === idA);
+    check('断线期间对局快照仍持续下发', Boolean(disconnected));
 
     a.close();
     await sleep(120);

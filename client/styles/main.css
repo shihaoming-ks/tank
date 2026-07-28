@@ -731,3 +731,6 @@ h1 {
   font-size: 12px;
   line-height: 1.7;
 }
+
+.hud-player.is-spectator { opacity: 0.72; border-style: dashed; }
+.hud-player.is-spectator .hud-hp { color: var(--amber); font-size: 10px; }

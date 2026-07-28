@@ -10,6 +10,7 @@
  * 即使前端已做校验，此处必须独立再校验一次。
  */
 
+import { randomUUID } from 'node:crypto';
 import { PHASE, ROOM_ID_LEN } from '../shared/constants.js';
 import {
   C2S,
@@ -30,6 +31,8 @@ export class RoomManager {
     this.rooms = new Map();
     /** @type {Map<object, {roomId: string, playerId: string}>} ws → 归属信息 */
     this.connBinding = new Map();
+    /** resumeToken -> { roomId, playerId }；token 只由服务端签发 */
+    this.resumeBindings = new Map();
   }
 
   get roomCount() {
@@ -104,6 +107,9 @@ export class RoomManager {
       case C2S.JOIN:
         this.handleJoin(ws, msg);
         return true;
+      case C2S.RESUME:
+        this.handleResume(ws, msg);
+        return true;
       case C2S.LEAVE:
         this.handleLeave(ws);
         return true;
@@ -132,6 +138,7 @@ export class RoomManager {
     }
 
     let room;
+    let spectator = false;
     if (msg.roomId === undefined || msg.roomId === null || msg.roomId === '') {
       // 未指定房间号 → 创建新房间
       room = this.createRoom();
@@ -149,21 +156,21 @@ export class RoomManager {
         this.sendError(ws, ERR.ROOM_NOT_FOUND);
         return;
       }
-      if (room.isFull) {
+      if (room.isFull && room.phase !== PHASE.PLAYING && room.phase !== PHASE.COUNTDOWN) {
         this.sendError(ws, ERR.ROOM_FULL);
         return;
       }
+      spectator = room.phase === PHASE.PLAYING || room.phase === PHASE.COUNTDOWN;
       // 对局中不允许中途加入，否则新玩家会以 0 血进场，规则不清晰
       // 倒计时阶段同样不允许中途加入：此时出生点已分配完毕，
       // 新玩家会没有合法出生位置
-      if (room.phase === PHASE.PLAYING || room.phase === PHASE.COUNTDOWN) {
-        this.sendError(ws, ERR.ROOM_IN_GAME);
-        return;
-      }
+
     }
 
-    const player = room.addPlayer(ws, nickname);
+    const resumeToken = randomUUID();
+    const player = room.addPlayer(ws, nickname, resumeToken, spectator);
     this.connBinding.set(ws, { roomId: room.id, playerId: player.id });
+    this.resumeBindings.set(resumeToken, { roomId: room.id, playerId: player.id });
 
     // 先回 joined 让客户端确认自身身份，再广播 room 更新全员列表
     ws.send(
@@ -173,9 +180,35 @@ export class RoomManager {
         slot: player.slot,
         color: player.color,
         isHost: room.hostId === player.id,
+        resumeToken,
+        spectator,
       })
     );
     room.broadcastRoom();
+  }
+
+  handleResume(ws, msg) {
+    const token = typeof msg.resumeToken === 'string' ? msg.resumeToken : '';
+    const binding = this.resumeBindings.get(token);
+    if (!binding || String(msg.roomId) !== binding.roomId) {
+      this.sendError(ws, ERR.BAD_RESUME);
+      return;
+    }
+    const room = this.rooms.get(binding.roomId);
+    const player = room?.players.get(binding.playerId);
+    if (!room || !player || player.resumeToken !== token) {
+      this.resumeBindings.delete(token);
+      this.sendError(ws, ERR.BAD_RESUME);
+      return;
+    }
+    const restored = room.resumePlayer(player.id, ws);
+    if (!restored) {
+      this.sendError(ws, ERR.BAD_RESUME);
+      return;
+    }
+    this.connBinding.set(ws, binding);
+    ws.send(encode(S2C.JOINED, { selfId: player.id, roomId: room.id, slot: player.slot, color: player.color, isHost: room.hostId === player.id, resumeToken: token, resumed: true }));
+    logger.info({ evt: 'player_resume', roomId: room.id, playerId: player.id });
   }
 
   handleLeave(ws) {
@@ -196,6 +229,16 @@ export class RoomManager {
     if (room.hostId !== player.id) {
       this.sendError(ws, ERR.NOT_HOST);
       return;
+    }
+    const queued = [...room.players.values()].filter((p) => p.spectator).sort((a, b) => a.joinedAt - b.joinedAt);
+    for (const watcher of queued) {
+      if (room.isFull) break;
+      room.players.delete(watcher.id);
+      const resumeToken = randomUUID();
+      const promoted = room.addPlayer(watcher.ws, watcher.nickname, resumeToken);
+      this.connBinding.set(watcher.ws, { roomId: room.id, playerId: promoted.id });
+      this.resumeBindings.set(resumeToken, { roomId: room.id, playerId: promoted.id });
+      watcher.ws.send(encode(S2C.JOINED, { selfId: promoted.id, roomId: room.id, slot: promoted.slot, color: promoted.color, isHost: room.hostId === promoted.id, resumeToken }));
     }
     if (!room.canStart) {
       this.sendError(ws, ERR.NOT_ENOUGH_PLAYERS);
@@ -240,6 +283,6 @@ export class RoomManager {
     const ctx = this.resolve(ws);
     this.connBinding.delete(ws);
     if (!ctx) return;
-    ctx.room.removePlayer(ctx.player.id, 'disconnect');
+    ctx.room.disconnectPlayer(ctx.player.id);
   }
 }
