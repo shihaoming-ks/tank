@@ -1,0 +1,25 @@
+{
+  "name": "tank-arena",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI 坦克竞技场 —— 服务端权威的在线多人坦克对战游戏",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "dev": "node server/index.js",
+    "start": "node server/index.js",
+    "test": "node --test test/"
+  },
+  "keywords": [
+    "game",
+    "multiplayer",
+    "websocket",
+    "canvas"
+  ],
+  "license": "UNLICENSED",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
