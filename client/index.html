@@ -67,18 +67,24 @@
       </div>
     </main>
 
-    <!-- ========== 视图 3：对战（S1.3 接入 Canvas） ========== -->
-    <main id="view-game" class="view" hidden>
-      <div class="panel">
-        <header class="panel-head">
-          <h1>对战进行中</h1>
-          <p class="subtitle">房间 <span id="game-room-id" class="mono-hl">----</span></p>
-        </header>
-        <p class="hint-text">
-          战场渲染与操作将在 S1.3 接入。<br />
-          当前阶段仅验证房间状态同步已生效。
-        </p>
-        <button id="btn-leave-game" class="btn btn-danger">离开房间</button>
+    <!-- ========== 视图 3：对战 ========== -->
+    <main id="view-game" class="view view-game" hidden>
+      <div class="hud">
+        <div class="hud-left">
+          <span class="hud-room">房间 <b id="game-room-id" class="mono-hl">----</b></span>
+        </div>
+        <div id="hud-players" class="hud-players"></div>
+        <div class="hud-right">
+          <span id="hud-timer" class="hud-timer">--:--</span>
+          <button id="btn-leave-game" class="btn-ghost">离开</button>
+        </div>
+      </div>
+
+      <canvas id="canvas" class="canvas"></canvas>
+
+      <div class="controls-hint">
+        <span><b>W A S D</b> / <b>方向键</b> 移动</span>
+        <span><b>空格</b> 射击</span>
       </div>
     </main>
 

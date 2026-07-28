@@ -21,8 +21,8 @@ tank/
 │   ├── static.js               #   静态文件服务（含目录穿越防护）
 │   ├── RoomManager.js          #   房间集合、连接绑定、上行消息路由与校验
 │   ├── Room.js                 #   单房间：玩家进出、房主移交、广播；[S1.3] 加 tick
-│   ├── map.js                  #   [S1.3] tilemap 生成
-│   └── physics.js              #   [S1.3] 纯函数：移动、碰撞、子弹推进（可单测）
+│   ├── map.js                  #   tilemap 生成、出生点、地图自检
+│   └── physics.js              #   纯函数：移动、碰撞、子弹推进（可单测）
 │
 ├── shared/                     # 【双端共享】浏览器与 Node 同时 import 同一物理文件
 │   ├── constants.js            #   全部可调参数的唯一来源
@@ -32,8 +32,8 @@ tank/
 │   ├── index.html              #   三视图骨架：lobby / room / game + 断连遮罩
 │   ├── main.js                 #   视图状态机，阶段切换完全由服务端驱动
 │   ├── net.js                  #   WS 连接、地址自适应、消息分发
-│   ├── input.js                #   [S1.3] 键盘 → intent（仅状态变化时发送）
-│   ├── render.js               #   [S1.3] Canvas 绘制（几何图形占位）
+│   ├── input.js                #   键盘 → intent（仅状态变化时发送）
+│   ├── render.js               #   Canvas 绘制（几何图形占位）
 │   └── styles/
 │       └── main.css
 │
@@ -41,7 +41,8 @@ tank/
 │   └── physics.test.js         #   [S2] 纯函数单测，无需启动服务
 │
 ├── scripts/                    # 【工具】开发与验证脛本
-│   └── smoke-room.js           #   端到端冒烟测试，需真实服务进程
+│   ├── smoke-room.js           #   房间逻辑端到端冒烟
+│   └── smoke-move.js           #   移动同步端到端冒烟
 │
 ├── assets/                     # 【素材】S1~S2 为空，规范见 assets/README.md
 │   └── sprites/
@@ -91,6 +92,18 @@ server/  ──import──>  shared/  <──import──  client/
 
 > 此问题已在 S1.2 阶段实际触发过：断连遮罩虽带 `hidden` 但因 `display:grid` 仍生效，
 > 导致大厅所有按钮不可点击。
+
+### 渲染驱动约束
+
+画面绘制必须**双驱动**，不得只依赖 `requestAnimationFrame`：
+
+| 驱动源 | 作用 |
+|---|---|
+| `requestAnimationFrame` | 跟随屏幕刷新率，保障时间驱动动画（如无敌闪烁）平滑 |
+| 快照到达 | 服务端 30Hz 保底，即使 rAF 失效仍有画面 |
+
+> 原因：无头浏览器、自动化测试容器、后台标签页中 rAF 可被节流至**完全不触发**，
+> 且不报任何错误 —— 这类“静默白屏”极难定位。S1.3 阶段已实际触发过。
 
 ### 静态路由映射
 

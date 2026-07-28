@@ -17,6 +17,7 @@ import {
   ERR_TEXT,
   S2C,
   encode,
+  isValidDir,
   isValidRoomId,
   normalizeNickname,
 } from '../shared/protocol.js';
@@ -109,6 +110,9 @@ export class RoomManager {
       case C2S.START:
         this.handleStart(ws);
         return true;
+      case C2S.INPUT:
+        this.handleInput(ws, msg);
+        return true;
       default:
         return false;
     }
@@ -193,10 +197,27 @@ export class RoomManager {
       return;
     }
 
-    // S1.3 将在此启动 tick 循环并初始化世界状态
-    room.phase = PHASE.PLAYING;
-    logger.info({ evt: 'game_start', roomId: room.id, size: room.size });
-    room.broadcastRoom();
+    room.startGame();
+  }
+
+  /**
+   * 移动意图。
+   *
+   * 高频消息，因此：
+   *   - 校验失败**静默忽略**而非回错误，避免异常客户端把自己刷爆
+   *   - 客户端仅在按键状态变化时发送，不是每帧发
+   */
+  handleInput(ws, msg) {
+    const ctx = this.resolve(ws);
+    if (!ctx) return;
+
+    const dir = msg.dir ?? null;
+    if (!isValidDir(dir)) {
+      logger.debug({ evt: 'bad_input_dir', playerId: ctx.player.id, dir });
+      return;
+    }
+
+    ctx.room.setMoveIntent(ctx.player, dir);
   }
 
   /** 连接断开时清理。与主动 leave 的区别仅在于日志 reason */

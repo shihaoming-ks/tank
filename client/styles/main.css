@@ -31,7 +31,7 @@
 body {
   margin: 0;
   min-height: 100vh;
-  padding: 64px 24px 24px;
+  padding: 60px 16px 20px;
   display: grid;
   place-items: start center;
   background: var(--bg);
@@ -367,6 +367,115 @@ h1 {
   50% {
     opacity: 0.25;
   }
+}
+
+/* ---------- 对战视图 ---------- */
+
+.view-game {
+  width: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.hud {
+  width: 960px;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+}
+
+.hud-left,
+.hud-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+
+.hud-room {
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+
+.hud-timer {
+  font-size: 16px;
+  letter-spacing: 0.1em;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+}
+/* 最后 30 秒转红并闪烁，制造收尾压迫感 */
+.hud-timer.is-urgent {
+  color: var(--red);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.hud-players {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  flex: 1;
+}
+
+.hud-player {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  font-size: 11px;
+}
+.hud-player.is-self {
+  border-color: var(--fg-dim);
+}
+.hud-player.is-dead {
+  opacity: 0.42;
+}
+
+.hud-name {
+  max-width: 84px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hud-hp {
+  color: var(--red);
+  letter-spacing: -1px;
+}
+.hud-hp.is-dead {
+  color: var(--fg-dim);
+  letter-spacing: normal;
+}
+
+.canvas {
+  display: block;
+  border: 1px solid var(--line);
+  background: #12150f;
+  box-shadow: 0 20px 50px rgb(0 0 0 / 55%);
+  /* 像素风格：缩放时不做插值模糊，S3 接入贴图后同样受益 */
+  image-rendering: pixelated;
+}
+
+.controls-hint {
+  display: flex;
+  gap: 20px;
+  color: var(--fg-dim);
+  font-size: 11px;
+}
+.controls-hint b {
+  color: var(--amber);
+  font-weight: 500;
 }
 
 /* ---------- 断连遮罩 ---------- */

@@ -4,13 +4,15 @@
  * 视图流转：lobby → room → game
  *
  * ⚠️ 本文件不含任何游戏规则判定。
- *    房间阶段、玩家列表、房主身份全部以服务端下行为唯一依据，
- *    绝不在本地推断（例如"我人数够了就自己切到 game"）。
+ *    房间阶段、玩家列表、坦克坐标、生命值全部以服务端下行为唯一依据，
+ *    绝不在本地推断或预测。
  */
 
-import { PHASE, ROOM_MAX } from '/shared/constants.js';
+import { MATCH_DURATION_MS, PHASE, ROOM_MAX } from '/shared/constants.js';
 import { C2S, S2C, isValidRoomId, normalizeNickname } from '/shared/protocol.js';
+import { InputController } from './input.js';
 import { Net } from './net.js';
+import { Renderer } from './render.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -40,6 +42,9 @@ const els = {
   // 对战
   gameRoomId: $('#game-room-id'),
   btnLeaveGame: $('#btn-leave-game'),
+  canvas: $('#canvas'),
+  hudPlayers: $('#hud-players'),
+  hudTimer: $('#hud-timer'),
   // 遮罩
   overlay: $('#overlay-disconnect'),
   disconnectReason: $('#disconnect-reason'),
@@ -50,9 +55,13 @@ const state = {
   selfId: null,
   roomId: null,
   room: null,
+  /** 最新快照。渲染循环读它，收到新的就整体替换 */
+  snapshot: null,
 };
 
 const net = new Net();
+const renderer = new Renderer(els.canvas);
+const input = new InputController(net);
 
 // ---------------- 视图切换 ----------------
 
@@ -60,6 +69,10 @@ function showView(name) {
   for (const [key, el] of Object.entries(els.views)) {
     el.hidden = key !== name;
   }
+  // 只在对战视图接收键盘，避免在大厅输入昵称时误触发移动
+  input.setEnabled(name === 'game');
+  // 切入对战视图后立即画一帧，不等下一个快照到达
+  if (name === 'game') drawFrame();
 }
 
 /** 错误提示，3.5s 后自动消失 */
@@ -95,6 +108,7 @@ els.nickname.addEventListener('change', () => {
 function renderRoom(room) {
   state.room = room;
   state.roomId = room.roomId;
+  renderer.setPlayers(room.players);
 
   els.roomId.textContent = room.roomId;
   els.gameRoomId.textContent = room.roomId;
@@ -139,6 +153,8 @@ function renderRoom(room) {
     els.roomHint.textContent = '';
   }
 
+  renderHud(room);
+
   // 阶段切换完全由服务端驱动
   showView(room.phase === PHASE.PLAYING ? 'game' : 'room');
 }
@@ -148,6 +164,75 @@ function tag(text, cls) {
   s.className = `tag ${cls}`;
   s.textContent = text;
   return s;
+}
+
+/** HUD 玩家条：颜色 + 昵称 + 血条 */
+function renderHud(room) {
+  els.hudPlayers.innerHTML = '';
+  for (const p of room.players) {
+    const box = document.createElement('div');
+    box.className = 'hud-player';
+    if (p.id === state.selfId) box.classList.add('is-self');
+    if (!p.alive) box.classList.add('is-dead');
+
+    const swatch = document.createElement('i');
+    swatch.className = 'swatch';
+    swatch.style.background = p.color;
+
+    const name = document.createElement('span');
+    name.className = 'hud-name';
+    name.textContent = p.nickname;
+
+    const hp = document.createElement('span');
+    hp.className = 'hud-hp';
+    hp.dataset.playerId = p.id;
+
+    box.append(swatch, name, hp);
+    els.hudPlayers.append(box);
+  }
+}
+
+/**
+ * 血量与存活状态每帧从快照更新。
+ * 不走 room 消息是因为 room 只在房间变更时下发，
+ * 而血量在对战中高频变化。
+ */
+function updateHudFromSnapshot(snap) {
+  for (const t of snap.tanks ?? []) {
+    const el = els.hudPlayers.querySelector(`[data-player-id="${t.id}"]`);
+    if (!el) continue;
+    el.textContent = t.alive ? '❤'.repeat(Math.max(0, t.hp)) : '淘汰';
+    el.classList.toggle('is-dead', !t.alive);
+  }
+
+  const left = snap.timeLeft ?? MATCH_DURATION_MS;
+  const sec = Math.ceil(left / 1000);
+  const mm = String(Math.floor(sec / 60)).padStart(2, '0');
+  const ss = String(sec % 60).padStart(2, '0');
+  els.hudTimer.textContent = `${mm}:${ss}`;
+  els.hudTimer.classList.toggle('is-urgent', sec <= 30);
+}
+
+// ---------------- 渲染循环 ----------------
+
+/**
+ * 绘制一帧。
+ * 教训：曾只依赖 requestAnimationFrame 驱动渲染，但在部分环境
+ * （无头浏览器、某些自动化容器、后台标签页）rAF 会被节流至完全不触发，
+ * 导致画面永久空白且**无任何报错**，极难定位。
+ * 因此渲染采用双驱动：
+ *   1. rAF —— 跟随屏幕刷新率，保证时间驱动动画（如无敌闪烁）平滑
+ *   2. 快照到达 —— 服务端 30Hz 保底，即使 rAF 完全失效仍有画面
+ * 重复绘制成本极低，但可用性提升显著。
+ */
+function drawFrame() {
+  if (els.views.game.hidden) return;
+  renderer.draw(state.snapshot);
+}
+
+function loop() {
+  drawFrame();
+  requestAnimationFrame(loop);
 }
 
 // ---------------- 连接状态 ----------------
@@ -165,6 +250,7 @@ net.onStatus = (status, detail) => {
 
   if (status === 'closed' || status === 'error') {
     // 断连是致命状态：直接遮罩，避免用户在失效界面上继续操作
+    input.setEnabled(false);
     els.overlay.hidden = false;
     if (detail?.shutdownMessage) {
       els.disconnectReason.textContent = detail.shutdownMessage;
@@ -177,10 +263,22 @@ net.onStatus = (status, detail) => {
 net.on(S2C.JOINED, (msg) => {
   state.selfId = msg.selfId;
   state.roomId = msg.roomId;
+  renderer.setSelfId(msg.selfId);
   console.info('[app] 已加入房间', msg.roomId, '身份', msg.selfId);
 });
 
 net.on(S2C.ROOM, (msg) => renderRoom(msg));
+
+net.on(S2C.SNAPSHOT, (msg) => {
+  // 地图只在首帧下发，需缓存
+  if (msg.map) renderer.setMap(msg.map);
+  // 丢弃乱序到达的旧帧，否则画面会出现回跳
+  if (state.snapshot && msg.t < state.snapshot.t) return;
+  state.snapshot = msg;
+  updateHudFromSnapshot(msg);
+  // 保底绘制：不依赖 rAF 是否可用
+  drawFrame();
+});
 
 net.on(S2C.ERROR, (msg) => {
   console.warn('[app] 服务端错误', msg.code, msg.message);
@@ -242,6 +340,7 @@ function leaveRoom() {
   state.selfId = null;
   state.roomId = null;
   state.room = null;
+  state.snapshot = null;
   els.roomIdInput.value = '';
   showView('lobby');
 }
@@ -264,6 +363,9 @@ els.btnCopy.addEventListener('click', async () => {
 
 async function main() {
   showView('lobby');
+  input.attach();
+  requestAnimationFrame(loop);
+
   try {
     await net.connect();
   } catch (err) {
