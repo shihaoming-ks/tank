@@ -77,8 +77,21 @@ class Client {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const HTTP_BASE = URL.replace(/^ws/, 'http').replace(/\/ws$/, '');
+const health = () => fetch(`${HTTP_BASE}/healthz`).then((r) => r.json());
+
 async function main() {
   console.log(`\n连接目标：${URL}\n`);
+
+  /**
+   * 记录基线。绝不能假设服务端此刻是空的 ——
+   * 开着的浏览器标签页也会占用房间，导致断言 rooms===0 失败。
+   * 因此所有全局计数断言都测「增量归零」而非「绝对值为零」。
+   */
+  const base = await health();
+  if (base.rooms > 0) {
+    console.log(`  \x1b[90m注：已有 ${base.rooms} 个房间 / ${base.players} 名玩家在线，将按增量校验\x1b[0m\n`);
+  }
 
   // ---------- 1. 创建房间 ----------
   console.log('1. 创建房间');
@@ -244,13 +257,21 @@ async function main() {
   console.log('\n11. 房间空置自动回收');
   b.close();
   f.close();
-  await sleep(300);
-  const health = await fetch('http://localhost:8080/healthz').then((r) => r.json());
-  check('房间已被销毁', health.rooms === 0, `rooms=${health.rooms}`);
-  check('玩家数归零', health.players === 0, `players=${health.players}`);
-
-  // 清理
   for (const cl of [d, e, g]) cl.close();
+  await sleep(400);
+
+  const after = await health();
+  check(
+    '本次创建的房间已被销毁',
+    after.rooms === base.rooms,
+    `rooms ${base.rooms} → ${after.rooms}`
+  );
+  check(
+    '本次加入的玩家已全部清理',
+    after.players === base.players,
+    `players ${base.players} → ${after.players}`
+  );
+
   await sleep(100);
 
   // ---------- 汇总 ----------
