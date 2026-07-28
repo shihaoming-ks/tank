@@ -10,6 +10,15 @@
     <!-- ========== 顶部状态条 ========== -->
     <div class="topbar">
       <span class="brand">坦克竞技场</span>
+      <label class="theme-switch" for="theme-select">
+        <span>主题</span>
+        <select id="theme-select" aria-label="选择视觉主题">
+          <option value="industrial">军械终端</option>
+          <option value="pixel">像素街机</option>
+          <option value="cartoon">手绘战术</option>
+          <option value="neon">霓虹赛博</option>
+        </select>
+      </label>
       <span class="conn"><i id="status-dot" class="dot dot-pending"></i><span id="status">连接中…</span></span>
     </div>
 
@@ -32,7 +41,13 @@
 
         <label class="field">
           <span class="field-label">房间号</span>
-          <input id="input-roomid" class="input" type="text" inputmode="numeric" maxlength="4" placeholder="4 位数字" autocomplete="off" />
+          <div id="room-code" class="room-code" role="group" aria-label="房间号">
+            <input class="room-digit" inputmode="numeric" maxlength="1" autocomplete="one-time-code" aria-label="房间号第 1 位" />
+            <input class="room-digit" inputmode="numeric" maxlength="1" aria-label="房间号第 2 位" />
+            <input class="room-digit" inputmode="numeric" maxlength="1" aria-label="房间号第 3 位" />
+            <input class="room-digit" inputmode="numeric" maxlength="1" aria-label="房间号第 4 位" />
+            <input id="input-roomid" type="hidden" />
+          </div>
         </label>
 
         <button id="btn-join" class="btn">加入房间</button>

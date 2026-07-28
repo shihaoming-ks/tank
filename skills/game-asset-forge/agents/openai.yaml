@@ -1,0 +1,4 @@
+interface:
+  display_name: "小游戏视觉素材工坊"
+  short_description: "为小游戏创建统一风格的视觉素材"
+  default_prompt: "请为小游戏创建一套视觉素材，说明风格、尺寸、格式、透明度和输出目录。"

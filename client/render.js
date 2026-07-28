@@ -223,7 +223,6 @@ export class Renderer {
 
     ctx.save();
     ctx.translate(MAP_W / 2, MAP_H / 2);
-    // 从 1.0 放大到 1.6，同时淡出
     ctx.scale(1 + p * 0.6, 1 + p * 0.6);
     ctx.globalAlpha = Math.max(0, 1 - p * 1.2);
 
@@ -239,13 +238,8 @@ export class Renderer {
     ctx.restore();
   }
 
-  /**
-   * 绘制开局倒计时。
-   * 数字随每秒重新放大，给出清晰的节奏感。
-   */
   drawCountdown(ctx, remainMs) {
     const sec = Math.ceil(remainMs / 1000);
-    // 当前这一秒内的进度，用于缩放动画
     const frac = 1 - ((remainMs % 1000) || 1000) / 1000;
 
     ctx.save();
@@ -275,12 +269,6 @@ export class Renderer {
 
     ctx.restore();
   }
-
-  /**
-   * 绘制并回收瞬时特效。
-   * 用 performance.now 而非快照帧号驱动：特效必须按真实时间衰减，
-   * 否则网络抖动会让爆炸忽快忽慢。
-   */
   drawEffects(ctx) {
     const now = performance.now();
     const alive = [];
