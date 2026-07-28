@@ -572,3 +572,15 @@ async function onGameOver(room, result) {
 - [ ] 容器云单副本 + 健康探针正常
 - [ ] 仓库无明文密钥
 - [ ] （可选）SSO 登录 / MySQL 归档可用
+
+---
+
+### S3 当前准备状态（2026-07-28）
+
+- [x] 素材规格与命名约定：`assets/README.md`
+- [x] 通用视觉资产生产 Skill：`skills/game-asset-forge/`
+- [x] 单主题与四主题生产提示词：`docs/S3-ASSET-GENERATION-PROMPT.md`、`docs/S3-THEME-ASSET-PROMPTS.md`
+- [x] 四套前端主题切换与本地持久化；每套主题都有独立的界面结构和文字对比度规则
+- [ ] 生成四套 AIGC PNG 素材
+- [ ] 实现主题化素材预加载、`drawImage` 映射与加载失败几何回退
+- [ ] 完成素材接入后的人工视觉验收

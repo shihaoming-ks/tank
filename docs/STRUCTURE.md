@@ -139,3 +139,31 @@ server/  ──import──>  shared/  <──import──  client/
 
 > `static.js` 内置目录穿越防护：`normalize` 后路径必须仍在挂载目录内，
 > 否则 `/shared/%2e%2e/.env` 之类的请求可读到仓库外任意文件。
+
+## 当前扩展（S2 后）
+
+```text
+client/
+├── index.html                 # 大厅、房间、战场；含四种主题选择器与四格房间号
+├── main.js                    # 视图状态机；主题持久化（tank:theme）、断线恢复、观战身份
+├── render.js                  # Canvas 几何回退；等待 AIGC 素材加载层接入
+└── styles/main.css            # industrial / pixel / cartoon / neon 四套结构化界面主题
+
+docs/
+├── S3-ASSET-GENERATION-PROMPT.md  # 单主题完整素材生产提示词
+├── S3-THEME-ASSET-PROMPTS.md      # 四主题素材、开局动画与前端提示词生产要求
+├── PROGRESS.md
+├── STRUCTURE.md
+└── prd/
+
+skills/
+└── game-asset-forge/
+    ├── SKILL.md                         # 通用小游戏视觉资产生产流程
+    ├── agents/openai.yaml               # Skill 展示元数据
+    └── references/
+        ├── asset-spec.md                # 素材简报、命名与验收参考
+        ├── manifest-template.md         # asset-manifest 模板
+        └── frontend-style-prompt-template.md # 仅在用户明确要求时使用
+```
+
+`skills/game-asset-forge` 不绑定 Tank Arena 尺寸或玩法；Tank Arena 的四主题规格、倒计时动画与前端提示词要求仅位于 `docs/S3-THEME-ASSET-PROMPTS.md`。

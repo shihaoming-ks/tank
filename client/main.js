@@ -20,6 +20,7 @@ const $ = (sel) => document.querySelector(sel);
 const els = {
   status: $('#status'),
   statusDot: $('#status-dot'),
+  themeSelect: $('#theme-select'),
   views: {
     lobby: $('#view-lobby'),
     room: $('#view-room'),
@@ -143,6 +144,18 @@ function toast(text, tone = 'error') {
  * 身份完全由服务端分配，否则同浏览器多标签页会串号。
  */
 const NICK_KEY = 'tank:nickname';
+const THEME_KEY = 'tank:theme';
+const THEMES = new Set(['industrial', 'pixel', 'cartoon', 'neon']);
+
+function applyTheme(theme, persist = true) {
+  const next = THEMES.has(theme) ? theme : 'industrial';
+  document.body.dataset.theme = next;
+  els.themeSelect.value = next;
+  if (persist) localStorage.setItem(THEME_KEY, next);
+}
+
+applyTheme(localStorage.getItem(THEME_KEY) ?? 'industrial', false);
+els.themeSelect.addEventListener('change', () => applyTheme(els.themeSelect.value));
 // 关闭标签页后仍可恢复；主动离开时会显式清除。
 const RESUME_KEY = 'tank:resume';
 
@@ -539,6 +552,33 @@ els.btnJoin.addEventListener('click', () => {
 els.roomIdInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') els.btnJoin.click();
 });
+const roomDigits = [...document.querySelectorAll('.room-digit')];
+function syncRoomCode() {
+  els.roomIdInput.value = roomDigits.map((input) => input.value).join('');
+}
+function clearRoomCode() {
+  for (const input of roomDigits) input.value = '';
+  syncRoomCode();
+}
+roomDigits.forEach((input, index) => {
+  input.addEventListener('input', () => {
+    input.value = input.value.replace(/\D/g, '').slice(-1);
+    if (input.value && index < roomDigits.length - 1) roomDigits[index + 1].focus();
+    syncRoomCode();
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Backspace' && !input.value && index > 0) roomDigits[index - 1].focus();
+    if (e.key === 'Enter') els.btnJoin.click();
+  });
+  input.addEventListener('paste', (e) => {
+    const digits = (e.clipboardData?.getData('text') ?? '').replace(/\D/g, '').slice(0, 4);
+    if (!digits) return;
+    e.preventDefault();
+    for (let i = 0; i < roomDigits.length; i++) roomDigits[i].value = digits[i] ?? '';
+    roomDigits[Math.min(digits.length, 4) - 1].focus();
+    syncRoomCode();
+  });
+});
 els.nickname.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     els.roomIdInput.value.trim() ? els.btnJoin.click() : els.btnCreate.click();
@@ -592,7 +632,7 @@ function leaveRoom() {
   state.spectator = false;
   localStorage.removeItem(RESUME_KEY);
   renderer.clearEffects();
-  els.roomIdInput.value = '';
+  clearRoomCode();
   els.overlayOver.hidden = true;
   showView('lobby');
 }
