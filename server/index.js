@@ -19,6 +19,7 @@ import { WebSocketServer } from 'ws';
 
 import { ALLOWED_ORIGINS, HOST, NODE_ENV, PORT, WS_PATH } from './config.js';
 import { logger } from './logger.js';
+import { RoomManager } from './RoomManager.js';
 import { createStaticHandler } from './static.js';
 import { HEARTBEAT_MS } from '../shared/constants.js';
 import { C2S, ERR, S2C, decode, encode } from '../shared/protocol.js';
@@ -27,6 +28,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 
 const startedAt = Date.now();
+
+/** 全局房间管理器。单进程内存态，见 03-PLAN.md 的单副本约束 */
+const rooms = new RoomManager();
 
 // ---------------- HTTP ----------------
 
@@ -45,8 +49,8 @@ const server = createServer(async (req, res) => {
         ok: true,
         uptime: Math.floor((Date.now() - startedAt) / 1000),
         connections: wss?.clients.size ?? 0,
-        rooms: 0, // S1.2 接入 RoomManager 后填充
-        players: 0,
+        rooms: rooms.roomCount,
+        players: rooms.playerCount,
       };
       res
         .writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
@@ -130,14 +134,16 @@ wss.on('connection', (ws, req) => {
           break;
 
         default:
-          // S1.2 起由 RoomManager 接管其余消息类型
-          logger.debug({ evt: 'ws_unhandled', connId, type: msg.type });
-          ws.send(
-            encode(S2C.ERROR, {
-              code: ERR.BAD_MESSAGE,
-              message: `暂不支持的消息类型: ${msg.type}`,
-            })
-          );
+          // 房间与对局相关消息统一交由 RoomManager 路由
+          if (!rooms.handleMessage(ws, msg)) {
+            logger.debug({ evt: 'ws_unhandled', connId, type: msg.type });
+            ws.send(
+              encode(S2C.ERROR, {
+                code: ERR.BAD_MESSAGE,
+                message: `暂不支持的消息类型: ${msg.type}`,
+              })
+            );
+          }
       }
     } catch (err) {
       logger.error({ evt: 'ws_message_error', connId, err: err.message });
@@ -150,6 +156,8 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', (code) => {
+    // 必须先清理房间归属，否则房间会残留已断开的玩家
+    rooms.handleDisconnect(ws);
     logger.info({ evt: 'ws_close', connId, code, total: wss.clients.size - 1 });
   });
 

@@ -7,11 +7,13 @@
   --bg-panel: #141816;
   --bg-inset: #0a0c0b;
   --line: #2a302c;
+  --line-soft: #1e2320;
   --fg: #d8dcd6;
   --fg-dim: #7c857e;
   --amber: #f6ae2d;
   --green: #44bba4;
   --red: #e94f37;
+  --blue: #3f88c5;
   --mono: 'IBM Plex Mono', 'SF Mono', Menlo, Consolas, monospace;
 }
 
@@ -19,17 +21,24 @@
   box-sizing: border-box;
 }
 
+/* hidden 属性必须能压过组件自身的 display。
+   否则 .overlay{display:grid} 会让 [hidden] 失效，
+   遮罩虽"看不见"却仍以 z-index:100 拦截全部鼠标点击。 */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
+  padding: 64px 24px 24px;
   display: grid;
-  place-items: center;
-  padding: 24px;
+  place-items: start center;
   background: var(--bg);
   /* 细网格底纹，呼应战场 tilemap */
   background-image:
-    linear-gradient(var(--line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    linear-gradient(var(--line-soft) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
   background-size: 32px 32px;
   background-position: -1px -1px;
   color: var(--fg);
@@ -37,8 +46,43 @@ body {
   font-size: 14px;
 }
 
+/* ---------- 顶部状态条 ---------- */
+
+.topbar {
+  position: fixed;
+  inset: 0 0 auto;
+  height: 44px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgb(13 15 14 / 92%);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(8px);
+  z-index: 10;
+}
+
+.brand {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+}
+
+.conn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+
+/* ---------- 视图与面板 ---------- */
+
+.view {
+  width: min(480px, 100%);
+}
+
 .panel {
-  width: min(560px, 100%);
   background: var(--bg-panel);
   border: 1px solid var(--line);
   border-radius: 2px;
@@ -52,40 +96,254 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
+.panel-head-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 h1 {
   margin: 0;
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
 }
 
 .subtitle {
   margin: 6px 0 0;
   color: var(--fg-dim);
   font-size: 12px;
-  letter-spacing: 0.08em;
-}
-
-.row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px dashed var(--line);
-}
-
-.label {
-  color: var(--fg-dim);
-  font-size: 12px;
   letter-spacing: 0.06em;
 }
 
-.value {
+.mono-hl {
+  color: var(--amber);
+  letter-spacing: 0.24em;
+}
+
+.mono-dim {
+  color: var(--fg-dim);
+  font-size: 12px;
+}
+
+/* ---------- 表单 ---------- */
+
+.field {
+  display: block;
+  margin-bottom: 16px;
+}
+
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--fg-dim);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.input {
+  width: 100%;
+  padding: 11px 12px;
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 14px;
+  transition: border-color 0.15s;
+}
+.input:focus {
+  outline: none;
+  border-color: var(--amber);
+}
+.input::placeholder {
+  color: #4a524c;
+}
+
+#input-roomid {
+  letter-spacing: 0.4em;
+  text-align: center;
+  font-size: 18px;
+}
+
+/* ---------- 按钮 ---------- */
+
+.btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--fg-dim);
+  background: rgb(255 255 255 / 4%);
+}
+.btn:disabled {
+  color: var(--fg-dim);
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.btn-primary {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.btn-primary:hover:not(:disabled) {
+  border-color: var(--amber);
+  background: rgb(246 174 45 / 12%);
+}
+
+.btn-danger {
+  border-color: var(--line);
+  color: var(--fg-dim);
+}
+.btn-danger:hover:not(:disabled) {
+  border-color: var(--red);
+  color: var(--red);
+  background: rgb(233 79 55 / 8%);
+}
+
+.btn-ghost {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  color: var(--fg-dim);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  flex: none;
+}
+.btn-ghost:hover {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+/* ---------- 分隔线 ---------- */
+
+.divider {
+  position: relative;
+  margin: 24px 0 20px;
+  text-align: center;
+}
+.divider::before {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto;
+  height: 1px;
+  background: var(--line);
+}
+.divider span {
+  position: relative;
+  padding: 0 12px;
+  background: var(--bg-panel);
+  color: var(--fg-dim);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+/* ---------- 玩家列表 ---------- */
+
+.roster-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 10px;
+  color: var(--fg-dim);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.roster {
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  background: var(--bg-inset);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  min-height: 132px;
+}
+
+.roster-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 13px;
+  gap: 10px;
+  padding: 11px 12px;
+  border-bottom: 1px dashed var(--line);
 }
+.roster-item:last-child {
+  border-bottom: none;
+}
+
+.swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  flex: none;
+  box-shadow: 0 0 8px currentcolor;
+}
+
+.roster-name {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roster-tags {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.tag {
+  padding: 2px 7px;
+  border-radius: 2px;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.tag-host {
+  border: 1px solid var(--amber);
+  color: var(--amber);
+}
+.tag-self {
+  border: 1px solid var(--green);
+  color: var(--green);
+}
+
+/* ---------- 提示文本 ---------- */
+
+.hint-text {
+  margin: 0 0 12px;
+  color: var(--fg-dim);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.error-text {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  background: rgb(233 79 55 / 10%);
+  border-left: 2px solid var(--red);
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ---------- 状态点 ---------- */
 
 .dot {
   width: 8px;
@@ -111,70 +369,37 @@ h1 {
   }
 }
 
-.btn {
-  width: 100%;
-  margin: 20px 0 0;
-  padding: 12px;
-  background: transparent;
-  border: 1px solid var(--amber);
+/* ---------- 断连遮罩 ---------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(13 15 14 / 88%);
+  backdrop-filter: blur(4px);
+  z-index: 100;
+}
+
+.overlay-box {
+  width: min(380px, calc(100% - 48px));
+  padding: 28px;
+  background: var(--bg-panel);
+  border: 1px solid var(--red);
   border-radius: 2px;
-  color: var(--amber);
-  font-family: inherit;
-  font-size: 13px;
+  text-align: center;
+}
+
+.overlay-box h2 {
+  margin: 0 0 10px;
+  font-size: 17px;
   letter-spacing: 0.1em;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.btn:hover:not(:disabled) {
-  background: rgb(246 174 45 / 12%);
-}
-.btn:disabled {
-  border-color: var(--line);
-  color: var(--fg-dim);
-  cursor: not-allowed;
-}
-
-.log-wrap {
-  margin-top: 24px;
-}
-
-.log-head {
-  color: var(--fg-dim);
-  font-size: 11px;
-  letter-spacing: 0.1em;
-  margin-bottom: 8px;
-}
-
-.log {
-  height: 180px;
-  overflow-y: auto;
-  padding: 12px;
-  background: var(--bg-inset);
-  border: 1px solid var(--line);
-  border-radius: 2px;
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-.log-line {
-  color: var(--fg-dim);
-  word-break: break-all;
-}
-.log-ok {
-  color: var(--green);
-}
-.log-warn {
-  color: var(--amber);
-}
-.log-bad {
   color: var(--red);
 }
 
-.hint {
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
+.overlay-box p {
+  margin: 0 0 20px;
   color: var(--fg-dim);
-  font-size: 11px;
-  line-height: 1.8;
+  font-size: 12px;
+  line-height: 1.7;
 }

@@ -3,38 +3,93 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>坦克竞技场 · 通路自检</title>
+    <title>坦克竞技场</title>
     <link rel="stylesheet" href="/styles/main.css" />
   </head>
   <body>
-    <main class="panel">
-      <header class="panel-head">
-        <h1>坦克竞技场</h1>
-        <p class="subtitle">S1.1 · 端到端通路自检</p>
-      </header>
+    <!-- ========== 顶部状态条 ========== -->
+    <div class="topbar">
+      <span class="brand">坦克竞技场</span>
+      <span class="conn"><i id="status-dot" class="dot dot-pending"></i><span id="status">连接中…</span></span>
+    </div>
 
-      <section class="row">
-        <span class="label">连接状态</span>
-        <span class="value"><i id="status-dot" class="dot dot-pending"></i><span id="status">初始化…</span></span>
-      </section>
+    <!-- ========== 视图 1：大厅 ========== -->
+    <main id="view-lobby" class="view">
+      <div class="panel">
+        <header class="panel-head">
+          <h1>进入战场</h1>
+          <p class="subtitle">2 ~ 4 名玩家 · 服务端权威裁决</p>
+        </header>
 
-      <section class="row">
-        <span class="label">共享参数</span>
-        <span class="value" id="meta">读取中…</span>
-      </section>
+        <label class="field">
+          <span class="field-label">你的昵称</span>
+          <input id="input-nickname" class="input" type="text" maxlength="12" placeholder="1 ~ 12 个字符" autocomplete="off" />
+        </label>
 
-      <button id="btn-echo" class="btn" disabled>发送 echo 测试</button>
+        <button id="btn-create" class="btn btn-primary">创建房间</button>
 
-      <section class="log-wrap">
-        <div class="log-head">运行日志</div>
-        <div id="log" class="log"></div>
-      </section>
+        <div class="divider"><span>或加入已有房间</span></div>
 
-      <footer class="hint">
-        本页仅用于验证「静态托管 + WebSocket 同源通路 + shared 双端共享」。<br />
-        大厅与对战界面将在 S1.2 / S1.3 接入。
-      </footer>
+        <label class="field">
+          <span class="field-label">房间号</span>
+          <input id="input-roomid" class="input" type="text" inputmode="numeric" maxlength="4" placeholder="4 位数字" autocomplete="off" />
+        </label>
+
+        <button id="btn-join" class="btn">加入房间</button>
+
+        <p id="lobby-error" class="error-text" hidden></p>
+      </div>
     </main>
+
+    <!-- ========== 视图 2：房间等待区 ========== -->
+    <main id="view-room" class="view" hidden>
+      <div class="panel">
+        <header class="panel-head panel-head-row">
+          <div>
+            <h1>房间 <span id="room-id" class="mono-hl">----</span></h1>
+            <p class="subtitle">把房间号告诉队友，即可加入同一局</p>
+          </div>
+          <button id="btn-copy" class="btn-ghost" title="复制房间号">复制</button>
+        </header>
+
+        <div class="roster-head">
+          <span>玩家列表</span>
+          <span id="roster-count" class="mono-dim">0 / 4</span>
+        </div>
+        <ul id="roster" class="roster"></ul>
+
+        <p id="room-hint" class="hint-text"></p>
+
+        <button id="btn-start" class="btn btn-primary" hidden>开始对战</button>
+        <button id="btn-leave" class="btn btn-danger">离开房间</button>
+
+        <p id="room-error" class="error-text" hidden></p>
+      </div>
+    </main>
+
+    <!-- ========== 视图 3：对战（S1.3 接入 Canvas） ========== -->
+    <main id="view-game" class="view" hidden>
+      <div class="panel">
+        <header class="panel-head">
+          <h1>对战进行中</h1>
+          <p class="subtitle">房间 <span id="game-room-id" class="mono-hl">----</span></p>
+        </header>
+        <p class="hint-text">
+          战场渲染与操作将在 S1.3 接入。<br />
+          当前阶段仅验证房间状态同步已生效。
+        </p>
+        <button id="btn-leave-game" class="btn btn-danger">离开房间</button>
+      </div>
+    </main>
+
+    <!-- ========== 断连遮罩 ========== -->
+    <div id="overlay-disconnect" class="overlay" hidden>
+      <div class="overlay-box">
+        <h2>连接已断开</h2>
+        <p id="disconnect-reason">与服务器的连接中断。</p>
+        <button class="btn btn-primary" onclick="location.reload()">刷新重连</button>
+      </div>
+    </div>
 
     <script type="module" src="/main.js"></script>
   </body>

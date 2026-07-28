@@ -19,8 +19,8 @@ tank/
 │   ├── config.js               #   环境变量读取，带安全默认值
 │   ├── logger.js               #   结构化日志 { ts, level, evt, roomId, playerId }
 │   ├── static.js               #   静态文件服务（含目录穿越防护）
-│   ├── RoomManager.js          #   [S1.2] 房间集合：创建/查找/销毁、玩家进出路由
-│   ├── Room.js                 #   [S1.2] 单房间：世界状态 + 30Hz tick + 广播
+│   ├── RoomManager.js          #   房间集合、连接绑定、上行消息路由与校验
+│   ├── Room.js                 #   单房间：玩家进出、房主移交、广播；[S1.3] 加 tick
 │   ├── map.js                  #   [S1.3] tilemap 生成
 │   └── physics.js              #   [S1.3] 纯函数：移动、碰撞、子弹推进（可单测）
 │
@@ -29,8 +29,8 @@ tank/
 │   └── protocol.js             #   消息 type 常量 + 编解码 + 校验
 │
 ├── client/                     # 【客户端】仅表现层，零判定逻辑
-│   ├── index.html              #   页面骨架
-│   ├── main.js                 #   入口。[S1.2] 起扩展为状态机 lobby → playing → over
+│   ├── index.html              #   三视图骨架：lobby / room / game + 断连遮罩
+│   ├── main.js                 #   视图状态机，阶段切换完全由服务端驱动
 │   ├── net.js                  #   WS 连接、地址自适应、消息分发
 │   ├── input.js                #   [S1.3] 键盘 → intent（仅状态变化时发送）
 │   ├── render.js               #   [S1.3] Canvas 绘制（几何图形占位）
@@ -38,7 +38,10 @@ tank/
 │       └── main.css
 │
 ├── test/                       # 【测试】node:test 内置，零额外依赖
-│   └── physics.test.js         #   [S2]
+│   └── physics.test.js         #   [S2] 纯函数单测，无需启动服务
+│
+├── scripts/                    # 【工具】开发与验证脛本
+│   └── smoke-room.js           #   端到端冒烟测试，需真实服务进程
 │
 ├── assets/                     # 【素材】S1~S2 为空，规范见 assets/README.md
 │   └── sprites/
@@ -79,6 +82,15 @@ server/  ──import──>  shared/  <──import──  client/
 
 所有可调数值（尺寸、速度、冷却、HP、时长、颜色）**必须**定义在 `shared/constants.js`。
 `server/` 与 `client/` 一律 import，禁止出现魔法数字。
+
+### CSS 约束
+
+`[hidden] { display: none !important; }` 是**必需的全局规则**。
+组件自身的 `display: grid/flex` 优先级高于 `[hidden]` 属性的默认样式，
+若不加此规则，隐藏的遮罩层仍会以 `z-index` 拦截全部鼠标点击。
+
+> 此问题已在 S1.2 阶段实际触发过：断连遮罩虽带 `hidden` 但因 `display:grid` 仍生效，
+> 导致大厅所有按钮不可点击。
 
 ### 静态路由映射
 

@@ -27,6 +27,8 @@ export class Net {
     this.handlers = new Map();
     /** 连接状态变化回调 */
     this.onStatus = null;
+    /** 服务端主动关闭时下发的原因，用于区分"服务重启"与"网络异常" */
+    this.shutdownMessage = null;
     this.url = resolveWsUrl();
   }
 
@@ -48,11 +50,17 @@ export class Net {
           console.warn('[net] 收到无法解析的消息', ev.data);
           return;
         }
+        // 记住服务端主动关闭的原因，close 事件本身不携带业务语义
+        if (msg.type === 'shutdown') this.shutdownMessage = msg.message;
         this.dispatch(msg);
       });
 
       ws.addEventListener('close', (ev) => {
-        this.setStatus('closed', { code: ev.code, reason: ev.reason });
+        this.setStatus('closed', {
+          code: ev.code,
+          reason: ev.reason,
+          shutdownMessage: this.shutdownMessage,
+        });
         console.warn('[net] 连接关闭', ev.code, ev.reason);
       });
 
