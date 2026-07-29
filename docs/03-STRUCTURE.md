@@ -50,12 +50,13 @@ tank/
 │   └── sprites/
 │
 └── docs/
-    ├── STRUCTURE.md            # 本文件：目录与分层契约
-    ├── SETUP.md                # 环境配置与运行手册
     ├── 00-赛题原文.md
     ├── 01-PRD-主文档.md
-    ├── 02-PRD-附录A-内部基建部署方案.md
-    └── PLAN.md                 # S1~S6 实施路线图
+    ├── 02-SETUP.md             # 环境配置与运行手册
+    ├── 03-STRUCTURE.md         # 本文件：目录与分层契约
+    ├── 04-DEPLOY.md            # 离线便携包部署手册
+    ├── 05-PLAN.md              # S1~S6 实施路线图
+    └── 06-PROGRESS.md          # 开发进展日志
 ```
 
 ## 分层规则（不可违反）
@@ -149,10 +150,13 @@ client/
 └── styles/main.css            # industrial / pixel / cartoon / neon 四套结构化界面主题
 
 docs/
-├── S3-ASSET-GENERATION-PROMPT.md  # 单主题完整素材生产提示词
-├── S3-THEME-ASSET-PROMPTS.md      # 四主题素材、开局动画与前端提示词生产要求
-├── PROGRESS.md
-└── STRUCTURE.md
+├── 00-赛题原文.md
+├── 01-PRD-主文档.md
+├── 02-SETUP.md
+├── 03-STRUCTURE.md
+├── 04-DEPLOY.md
+├── 05-PLAN.md
+└── 06-PROGRESS.md
 
 skills/
 └── game-asset-forge/
@@ -164,4 +168,4 @@ skills/
         └── frontend-style-prompt-template.md # 仅在用户明确要求时使用
 ```
 
-`skills/game-asset-forge` 不绑定 Tank Arena 尺寸或玩法；Tank Arena 的四主题规格、倒计时动画与前端提示词要求仅位于 `docs/S3-THEME-ASSET-PROMPTS.md`。
+`skills/game-asset-forge` 不绑定 Tank Arena 尺寸或玩法。

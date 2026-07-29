@@ -213,7 +213,7 @@ ALLOWED_ORIGINS=https://tank-arena.example.corp.kuaishou.com npm start
 
 坦克速度、生命值、地图尺寸等**游戏性参数**统一定义在
 `shared/constants.js`，因为它们必须被客户端和服务端**同时**读取。
-调参改那一个文件即可，见 [STRUCTURE.md](./STRUCTURE.md)。
+调参改那一个文件即可，见 [STRUCTURE.md](./03-STRUCTURE.md)。
 
 ---
 

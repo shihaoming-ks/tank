@@ -23,7 +23,7 @@ npm run dev
 
 多人测试：**再开一个浏览器窗口**（或无痕窗口）访问同一地址，输入相同房间号即可加入同一局。
 
-> 详细环境说明、环境变量、常见问题排查见 **[docs/SETUP.md](docs/SETUP.md)**
+> 详细环境说明、环境变量、常见问题排查见 **[docs/02-SETUP.md](docs/02-SETUP.md)**
 
 ---
 
@@ -107,7 +107,7 @@ npm run dev
 | 服务端 | Node.js | 单进程，内存态世界状态 |
 | 共享层 | `shared/` | 浏览器与 Node import **同一物理文件** |
 
-> 目录结构与分层规则详见 **[docs/STRUCTURE.md](docs/STRUCTURE.md)**
+> 目录结构与分层规则详见 **[docs/03-STRUCTURE.md](docs/03-STRUCTURE.md)**
 
 ---
 
@@ -143,10 +143,9 @@ cp .env.example .env
 
 | 文档 | 内容 |
 |---|---|
-| [docs/SETUP.md](docs/SETUP.md) | 环境配置与运行手册（含常见问题） |
-| **[docs/DEPLOY.md](docs/DEPLOY.md)** | **部署到无 Node 环境的物理机（离线便携包）** |
-| [docs/STRUCTURE.md](docs/STRUCTURE.md) | 目录结构与分层契约 |
+| [docs/02-SETUP.md](docs/02-SETUP.md) | 环境配置与运行手册（含常见问题） |
+| **[docs/04-DEPLOY.md](docs/04-DEPLOY.md)** | **部署到无 Node 环境的物理机（离线便携包）** |
+| [docs/03-STRUCTURE.md](docs/03-STRUCTURE.md) | 目录结构与分层契约 |
 | [docs/01-PRD-主文档.md](docs/01-PRD-主文档.md) | 完整产品需求 |
-| [docs/02-PRD-附录A-内部基建部署方案.md](docs/02-PRD-附录A-内部基建部署方案.md) | 内部基建部署方案 |
-| [docs/PLAN.md](docs/PLAN.md) | 实施路线图（S1 纯代码 → S6 基建），含各阶段进展 |
-| **[docs/PROGRESS.md](docs/PROGRESS.md)** | **开发进展日志：关键决策的理由、排查过的真实缺陷** |
+| [docs/05-PLAN.md](docs/05-PLAN.md) | 实施路线图（S1 纯代码 → S6 基建），含各阶段进展 |
+| **[docs/06-PROGRESS.md](docs/06-PROGRESS.md)** | **开发进展日志：关键决策的理由、排查过的真实缺陷** |
