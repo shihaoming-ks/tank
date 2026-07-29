@@ -4,7 +4,7 @@
  * ⚠️ 本模块**只读快照，不做任何判定**。
  *    它不知道游戏规则，只负责把服务端下发的状态画出来。
  *
- * S3 阶段：优先使用 client/assets/industrial/ 下的 AIGC 贴图；
+ * S3 阶段：优先使用 assets/ 下已接入主题的 AIGC 贴图；
  * 任何图片加载失败时自动回退 Canvas 几何绘制，不影响游戏。
  */
 
@@ -52,8 +52,8 @@ const TANK_COLOR_MAP = {
   '#f6ae2d': 'tank-yellow',
 };
 
-/** 素材根目录 */
-const ASSETS = '/assets/industrial/';
+/** 已接入位图素材的主题；其他主题保留几何绘制回退。 */
+const ASSET_THEMES = new Set(['industrial', 'pixel']);
 
 /**
  * 加载一张图片；失败时返回 null（不抛异常）。
@@ -128,15 +128,16 @@ export class Renderer {
       'fx-brick-debris.png', 'fx-ram.png',
       'ui-hp-pip-full.png', 'ui-hp-pip-empty.png',
     ];
-    await Promise.all(files.map(async f => {
-      this._imgs.set(f, await loadImg(ASSETS + f));
-    }));
+    await Promise.all([...ASSET_THEMES].flatMap(theme => files.map(async f => {
+      this._imgs.set(`${theme}/${f}`, await loadImg(`/assets/${theme}/${f}`));
+    })));
   }
 
-  /** 获取已缓存图片。非 industrial 主题时返回 null，自动走几何回退 */
+  /** 获取当前主题的缓存图片；未接入或加载失败时自动走几何回退。 */
   _img(name) {
-    if (document.body.dataset.theme !== 'industrial') return null;
-    return this._imgs.get(name) ?? null;
+    const theme = document.body.dataset.theme;
+    if (!ASSET_THEMES.has(theme)) return null;
+    return this._imgs.get(`${theme}/${name}`) ?? null;
   }
 
   /**
