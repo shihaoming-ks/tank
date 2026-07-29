@@ -8,6 +8,53 @@
  *    绝不在本地推断或预测。
  */
 
+// ---------------- 单标签页互斥 ----------------
+//
+// 方案：BroadcastChannel ping/pong
+//   - 新标签页打开时广播 "ping"，已有活跃标签页回复 "pong"
+//   - 收到 pong 则认为已有实例，展示遮罩并停止初始化
+//   - 已有实例关闭时，广播 "release"，新标签页自动解锁
+//
+// 注意：BroadcastChannel 在同浏览器**不同 origin** 之间隔离，
+// 无需担心与其他网站冲突；file:// 协议或 Safari 私人模式下
+// BroadcastChannel 仍可用，但 pong 回路需双页同时在线。
+(function guardSingleTab() {
+  // 不支持 BroadcastChannel（极少数老浏览器）则跳过，不阻断游戏
+  if (typeof BroadcastChannel === 'undefined') return;
+
+  const ch = new BroadcastChannel('tank-arena-single-tab');
+  let isDuplicate = false;
+
+  ch.onmessage = (e) => {
+    if (e.data === 'ping') {
+      // 我是已有实例，回复存活信号
+      ch.postMessage('pong');
+    } else if (e.data === 'pong' && !isDuplicate) {
+      // 收到 pong：说明已有另一个窗口在运行，展示遮罩
+      isDuplicate = true;
+      document.getElementById('overlay-duplicate').hidden = false;
+    } else if (e.data === 'release') {
+      // 另一个窗口关闭了，自动解锁当前页
+      if (isDuplicate) {
+        isDuplicate = false;
+        document.getElementById('overlay-duplicate').hidden = true;
+      }
+    }
+  };
+
+  // 广播 ping，等待已有实例回 pong（100ms 内无回应则视为无其他实例）
+  ch.postMessage('ping');
+
+  // 本窗口关闭时通知其他等待中的页面
+  window.addEventListener('beforeunload', () => {
+    ch.postMessage('release');
+    ch.close();
+  });
+
+  // 将 channel 挂到 window 供后续检查（是否阻断初始化）
+  window.__tabGuard = { ch, getIsDuplicate: () => isDuplicate };
+})();
+
 import { END_REASON, MATCH_DURATION_MS, MAX_HP, PHASE, ROOM_MAX } from '/shared/constants.js';
 import { C2S, S2C, isValidRoomId, normalizeNickname } from '/shared/protocol.js';
 import { Feed } from './feed.js';
@@ -670,6 +717,10 @@ els.btnCopy.addEventListener('click', async () => {
 // ---------------- 启动 ----------------
 
 async function main() {
+  // 等待 pong 回路（100ms），若已有其他标签页则不初始化
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  if (window.__tabGuard?.getIsDuplicate()) return;
+
   showView('lobby');
   input.attach();
   requestAnimationFrame(loop);
