@@ -632,10 +632,11 @@ function syncRoomCode() {
     cell.textContent = val[i] ?? '';
   });
 
-  // 高亮"当前待输入格"（聚焦时）
+  // 高亮"当前光标所在格"（聚焦时）
   if (document.activeElement === roomCodeInput) {
-    const cursor = Math.min(val.length, 3); // 已满时高亮最后一格
-    otpCells.forEach((cell, i) => cell.classList.toggle('active', i === cursor));
+    const cursor = roomCodeInput.selectionStart ?? val.length;
+    const activeIdx = Math.min(cursor, 3);
+    otpCells.forEach((cell, i) => cell.classList.toggle('active', i === activeIdx));
   } else {
     otpCells.forEach((cell) => cell.classList.remove('active'));
   }
@@ -655,6 +656,10 @@ if (roomCodeInput) {
   roomCodeInput.addEventListener('blur',  () => {
     otpCells.forEach((c) => c.classList.remove('active'));
   });
+  // 光标位置变化时（方向键/鼠标点击后）刷新高亮格
+  roomCodeInput.addEventListener('keyup',       () => syncRoomCode());
+  roomCodeInput.addEventListener('mouseup',     () => syncRoomCode());
+  roomCodeInput.addEventListener('selectionchange', () => syncRoomCode());
   roomCodeInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') els.btnJoin.click();
   });
@@ -665,9 +670,18 @@ if (roomCodeInput) {
     roomCodeInput.value = digits;
     syncRoomCode();
   });
-  // 点击视觉格子时让真实 input 获焦
-  document.getElementById('room-code')?.addEventListener('click', () => {
+  // 点击视觉格子：定位光标到对应位置，支持鼠标点击修改任意位
+  document.getElementById('room-code')?.addEventListener('click', (e) => {
     roomCodeInput.focus();
+    // 找点击的是哪个 .otp-cell
+    const cell = e.target.closest('.otp-cell');
+    if (cell) {
+      const idx = parseInt(cell.dataset.idx ?? '0', 10);
+      const val = roomCodeInput.value;
+      // 把光标定位到该格：已有字符则选中它（直接覆盖），超出末尾则移到末尾
+      const pos = Math.min(idx, val.length);
+      roomCodeInput.setSelectionRange(pos, Math.min(pos + 1, val.length));
+    }
   });
 }
 els.nickname.addEventListener('keydown', (e) => {
