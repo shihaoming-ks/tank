@@ -117,7 +117,7 @@ if [[ "$TARGET" == linux-* ]]; then
 fi
 
 # 3.2 应用源码
-cp -R server shared client "$STAGE/"
+cp -R server shared client assets "$STAGE/"
 cp package.json "$STAGE/"
 [[ -f README.md ]] && cp README.md "$STAGE/"
 
