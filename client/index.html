@@ -41,11 +41,30 @@
 
         <label class="field">
           <span class="field-label">房间号</span>
-          <div id="room-code" class="room-code" role="group" aria-label="房间号">
-            <input class="room-digit" inputmode="numeric" autocomplete="one-time-code" aria-label="房间号第 1 位" />
-            <input class="room-digit" inputmode="numeric" aria-label="房间号第 2 位" />
-            <input class="room-digit" inputmode="numeric" aria-label="房间号第 3 位" />
-            <input class="room-digit" inputmode="numeric" aria-label="房间号第 4 位" />
+          <!--
+            OTP 输入方案：单个透明 input 覆盖在 4 个视觉格子上
+            - 真实 input 永远不跳焦，彻底消除 Safari 多格跳焦问题
+            - 4 个 .otp-cell 纯视觉，用 JS 根据 input.value 同步
+          -->
+          <div id="room-code" class="room-code otp-root">
+            <input
+              id="input-roomcode"
+              class="otp-input"
+              type="text"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              maxlength="4"
+              autocomplete="one-time-code"
+              aria-label="4 位房间号"
+              spellcheck="false"
+              autocorrect="off"
+            />
+            <div class="otp-display" aria-hidden="true">
+              <span class="otp-cell" data-idx="0"></span>
+              <span class="otp-cell" data-idx="1"></span>
+              <span class="otp-cell" data-idx="2"></span>
+              <span class="otp-cell" data-idx="3"></span>
+            </div>
             <input id="input-roomid" type="hidden" />
           </div>
         </label>
