@@ -557,12 +557,14 @@ export class Room {
       kind: EVENT_KIND.HIT,
       x,
       y,
+      actorId: other.id,
       targetId: victim.id,
       target: victim.nickname,
       actor: other.nickname,
       color: other.color,
       hp: victim.hp,
       ram: 1,
+      surface: 'ram',
     });
 
     logger.info({
@@ -600,6 +602,7 @@ export class Room {
       kind: EVENT_KIND.KILL,
       x: Math.round(victim.x),
       y: Math.round(victim.y),
+      actorId: attacker?.id ?? null,
       targetId: victim.id,
       target: victim.nickname,
       actor: other.nickname,
@@ -717,6 +720,9 @@ export class Room {
       bullet.y = next.y;
 
       if (next.hitWall) {
+        const tileType = this.grid[next.row]?.[next.col];
+        const surface = tileType === TILE_TYPE.BRICK ? 'brick'
+          : tileType === TILE_TYPE.STEEL ? 'steel' : 'border';
         // 砖墙可被击破：扣耐久，归零则变空地
         let broken = false;
         let brickHp = null;
@@ -751,7 +757,9 @@ export class Room {
           kind: EVENT_KIND.HIT,
           x: Math.round(bullet.x),
           y: Math.round(bullet.y),
+          actorId: bullet.ownerId,
           wall: 1,
+          surface,
         });
         continue;
       }
@@ -783,11 +791,13 @@ export class Room {
       kind: EVENT_KIND.HIT,
       x: Math.round(bullet.x),
       y: Math.round(bullet.y),
+      actorId: bullet.ownerId,
       targetId: victim.id,
       target: victim.nickname,
       actor: attacker?.nickname ?? '未知',
       color: attacker?.color,
       hp: victim.hp,
+      surface: 'tank',
     });
 
     logger.info({
@@ -839,6 +849,7 @@ export class Room {
       kind: EVENT_KIND.KILL,
       x: Math.round(victim.x),
       y: Math.round(victim.y),
+      actorId: other.id,
       targetId: victim.id,
       target: victim.nickname,
       actor: attacker?.nickname ?? '未知',

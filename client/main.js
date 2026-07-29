@@ -509,12 +509,12 @@ net.on(S2C.EVENT, (msg) => {
   renderer.handleEvents(events);
   feed.handleEvents(events);
   // 音效
+  const listener = state.snapshot?.tanks?.find((tank) => tank.id === state.selfId);
   for (const ev of events) {
     switch (ev.kind) {
-      case 'hit':       audio.hit();     break;
+      case 'hit':       audio.combat(ev, { selfId: state.selfId, listener }); break;
       case 'kill':
         if (ev.actorId === state.selfId) audio.explode();
-        else audio.hit();
         break;
       case 'countdown': audio.countTick(); break;
       case 'start':     audio.countGo();   break;
