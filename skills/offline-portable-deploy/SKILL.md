@@ -249,67 +249,44 @@ tar -xzf <package>.tar.gz && cd <package>/ && ./start.sh
 
 ## 使用示例
 
-### 场景一：部署到 Ubuntu 22（glibc 2.35）
+> 用户触发本 Skill 时，直接将以下提示词（按需修改括号内容）发送给 Agent。
 
-```
-输入：
-  project_dir: /home/user/myapp
-  entry: server/index.js
-  port: 3000
-  target: linux-x64
-  node_ver: v22.20.0
+### 示例一：普通 Linux 服务器（glibc ≥ 2.28）
 
-执行：
-  npm run build:portable
+> 请使用 offline-portable-deploy Skill，为当前项目生成一个离线便携部署包。
+>
+> - 项目根目录：当前工作目录
+> - 服务器入口：`server/index.js`
+> - 监听端口：`3000`
+> - 目标平台：`linux-x64`（Ubuntu 20+ / Debian 11+）
+> - Node 版本：`v22.20.0`
+>
+> 请生成 `scripts/build-portable.sh`，并在 `package.json` 中添加 `build:portable` 快捷命令。最后用本地 Node 做一次开发机验证，确认 `/healthz` 返回正常。
 
-输出：
-  dist/myapp-1.0.0-linux-x64.tar.gz (约 42 MB)
-  运行时要求：GLIBC_2.17 / GLIBCXX_3.4.19
+---
 
-部署：
-  scp dist/myapp-1.0.0-linux-x64.tar.gz user@server:~
-  ssh user@server "tar -xzf myapp-1.0.0-linux-x64.tar.gz && cd myapp-1.0.0-linux-x64 && ./start.sh"
-```
+### 示例二：CentOS 7 / RHEL 7（glibc 2.17）
 
-### 场景二：部署到 CentOS 7（glibc 2.17）
+> 请使用 offline-portable-deploy Skill，为当前项目生成兼容 CentOS 7 的离线包。
+>
+> - 目标平台：`linux-x64-glibc-217`（评审机已确认 glibc 2.17，`ldd --version` 输出见附）
+> - 服务器入口：`server/index.js`，端口：`3000`
+> - 健康检查路径：`/healthz`
+> - 需要同时在 `package.json` 添加 `build:portable:centos7` 快捷命令
+>
+> 打包完成后输出 ABI 要求（GLIBC_x.xx / GLIBCXX_x.x.xx），并给出目标机部署的完整命令序列。
 
-**先在目标机确认 glibc 版本：**
-```bash
-ldd --version | head -1
-# → ldd (GNU libc) 2.17   ← 需要 glibc-217 目标
-```
+---
 
-**回开发机打包：**
-```bash
-npm run build:portable:centos7
-# 或
-TARGET=linux-x64-glibc-217 npm run build:portable
-```
+### 示例三：带反向代理的 WebSocket 应用
 
-```
-输出：
-  dist/myapp-1.0.0-linux-x64-glibc-217.tar.gz
-  运行时要求：GLIBC_2.17 / GLIBCXX_3.4.19   ← 与 CentOS 7 兼容
-```
-
-**常见报错及处理：**
-
-```bash
-# 报错：version 'GLIBC_2.28' not found
-# 原因：使用了 linux-x64 目标，Node 要求 glibc ≥ 2.28
-# 解决：改用 linux-x64-glibc-217 目标重新打包
-
-# 报错：Exec format error
-# 原因：包的 CPU 架构与目标机不符
-# 解决：uname -m 确认架构，选对应 TARGET 重新打包
-```
-
-### 场景三：反向代理后部署
-
-若使用 Nginx / AccessProxy 反向代理：
-- HTTP 静态资源：正常转发
-- WebSocket：需配置 `Upgrade` 头透传，路径与服务端 `WS_PATH` 保持一致（默认 `/ws`）
-- 健康检查：代理 `/healthz` 或直接探测内网端口
+> 请使用 offline-portable-deploy Skill，为当前 Node.js WebSocket 项目生成离线便携包，目标平台 `linux-x64`。
+>
+> 额外要求：
+> - 服务同时处理 HTTP 静态资源和 WebSocket（路径 `/ws`）
+> - 部署在 Nginx 反向代理后面，代理地址 `http://127.0.0.1:3000`
+> - 请在 DEPLOY.md 中补充 Nginx 配置片段，要求透传 `Upgrade` 和 `Connection` 头
+> - 健康检查路径：`/healthz`，由代理直接透传给内网端口
 
 ---
 
