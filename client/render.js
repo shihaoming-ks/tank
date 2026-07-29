@@ -53,7 +53,7 @@ const TANK_COLOR_MAP = {
 };
 
 /** 已接入位图素材的主题；其他主题保留几何绘制回退。 */
-const ASSET_THEMES = new Set(['industrial', 'pixel']);
+const ASSET_THEMES = new Set(['industrial', 'pixel', 'cartoon', 'neon']);
 
 /**
  * 加载一张图片；失败时返回 null（不抛异常）。
@@ -111,6 +111,8 @@ export class Renderer {
     this._imgs = new Map();
     /** 异步预加载 Promise */
     this._ready = this._preload();
+    // 首帧可能早于主题素材加载完成；完成后请求下一帧，使道具等图标立即从回退切换到图片。
+    this._ready.then(() => this.draw(this._lastSnap));
 
     this.setupHiDPI();
   }
@@ -127,6 +129,8 @@ export class Renderer {
       'fx-hit.png', 'fx-wall-spark.png', 'fx-explosion.png',
       'fx-brick-debris.png', 'fx-ram.png',
       'ui-hp-pip-full.png', 'ui-hp-pip-empty.png',
+      'pickup-shield.png', 'pickup-boost.png', 'pickup-power.png',
+      'pickup-health.png', 'pickup-revive.png',
     ];
     await Promise.all([...ASSET_THEMES].flatMap(theme => files.map(async f => {
       this._imgs.set(`${theme}/${f}`, await loadImg(`/assets/${theme}/${f}`));
@@ -224,6 +228,7 @@ export class Renderer {
    * @param {object} snap 服务端快照
    */
   draw(snap) {
+    this._lastSnap = snap;
     const ctx = this.ctx;
     ctx.clearRect(0, 0, MAP_W, MAP_H);
 
@@ -649,12 +654,16 @@ export class Renderer {
     ctx.arc(0, 0, 13, 0, Math.PI * 2);
     ctx.stroke();
 
-    // 中心 emoji
     ctx.shadowBlur = 0;
-    ctx.font = '14px serif';
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(LABEL[pk.type] ?? '?', 0, 1);
+    const icon = this._img(`pickup-${pk.type}.png`);
+    if (icon?.complete && icon.naturalWidth > 0) {
+      ctx.drawImage(icon, -14, -14, 28, 28);
+    } else {
+      ctx.font = '14px serif';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(LABEL[pk.type] ?? '?', 0, 1);
+    }
 
     ctx.restore();
   }
