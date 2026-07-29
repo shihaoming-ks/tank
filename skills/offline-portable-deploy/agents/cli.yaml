@@ -1,0 +1,4 @@
+interface:
+  display_name: "离线便携部署工坊"
+  short_description: "将 Node.js 项目打包为无需预装运行时的离线便携包"
+  default_prompt: "请为我的 Node.js 项目生成离线便携包，支持在无网络/无 Node 的 Linux 服务器上一键启动。请提供目标平台（linux-x64 / linux-x64-glibc-217 / linux-arm64）和服务器入口文件。"
