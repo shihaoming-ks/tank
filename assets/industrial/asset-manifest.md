@@ -1,5 +1,17 @@
 # Asset Manifest — Tank Arena / Industrial
 
+> 运行时状态（2026-07-29）：核心贴图和五个道具图标均由 `client/render.js` 实际加载。`tile-brick-1/2`、倒计时框等历史试作条目不是当前加载契约。
+
+## 道具图标（已接入）
+
+| 文件 | 尺寸 | 用途 |
+|---|---:|---|
+| `pickup-shield.png` | 32×32 | 护盾 |
+| `pickup-boost.png` | 32×32 | 加速 |
+| `pickup-power.png` | 32×32 | 强化弹 |
+| `pickup-health.png` | 32×32 | 血包 |
+| `pickup-revive.png` | 32×32 | 复活甲 |
+
 ## 风格摘要
 - **方向：** 克制的工业军械终端；深橄榄黑、旧军用钢板、硬边几何轮廓、轻微磨损、压纹与铆钉。
 - **视角与光源：** 严格正俯视；右上方偏冷高光；短、克制阴影。

@@ -1,32 +1,29 @@
-# assets/ —— 视觉资产目录
+# Tank Arena 运行时素材
 
-MVP 阶段**为空**：所有视觉元素由 `client/render.js` 用 Canvas 几何图形（色块 / 圆环 / 线段）绘制，无需任何图片资源。
+本目录已不再是预留目录。`client/render.js` 会根据当前主题从 `/assets/<theme>/` 预加载 PNG，并在加载失败时退回 Canvas 几何渲染。
 
-## 后续接入 AIGC 素材时的规范
+## 主题
 
+| 目录 | 主题值 | 定位 |
+|---|---|---|
+| `industrial/` | `industrial` | 军械终端 |
+| `pixel/` | `pixel` | 像素街机 |
+| `cartoon/` | `cartoon` | 手绘战术 |
+| `neon/` | `neon` | 霓虹赛博 |
+
+每套主题至少包含以下已经接入的文件：
+
+```text
+tank-{red,blue,green,yellow}.png       # 64x64，透明
+bullet.png                             # 16x16，透明
+tile-{ground,border-steel,brick-3,steel}.png  # 32x32
+ui-hp-pip-{full,empty}.png             # 14x10，透明
+fx-{hit,wall-spark,explosion,brick-debris,ram}.png # 256x64，横向四帧
+pickup-{shield,boost,power,health,revive}.png       # 32x32，透明
 ```
-assets/
-└── sprites/
-    ├── tank-red.png       64×64  PNG 带透明通道
-    ├── tank-blue.png
-    ├── tank-green.png
-    ├── tank-yellow.png
-    ├── wall-brick.png     32×32  与 TILE 尺寸一致
-    ├── bullet.png         16×16
-    └── explosion.png      256×64 序列帧（4 帧 × 64px）
-```
 
-### 硬约束
+文件名是运行时契约，替换美术时不要改名。地形需可平铺；特效图每帧 64x64、横向四帧且中心锚点一致；道具图标应保持透明背景和高对比度。
 
-| 项 | 要求 |
-|---|---|
-| 格式 | PNG，必须带 Alpha 透明通道 |
-| 尺寸 | 坦克 64×64；墙体必须等于 `TILE`（32）；子弹 16×16 |
-| 命名 | 全小写，`kebab-case`，`<类别>-<变体>.png` |
-| 色板 | 与 `shared/constants.js` 的 `COLORS` 保持一致 |
-| 体积 | 单文件 < 50KB |
+`sprites/.gitkeep` 仅保留兼容旧目录，不是当前加载路径。
 
-### 替换方式
-
-素材接入**只需修改 `client/render.js`**，把 `ctx.fillRect(...)` 换成 `ctx.drawImage(...)`，
-不得触碰 `server/` 与 `shared/` 下的任何逻辑代码。
+完整的再生成提示词见 [docs/S3-THEME-ASSET-PROMPTS.md](../docs/S3-THEME-ASSET-PROMPTS.md)，每套主题目录内的 `asset-manifest.md` 与 `frontend-style-prompt.md` 记录该主题的细节。

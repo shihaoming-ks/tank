@@ -20,7 +20,7 @@
 - 倒计时中的数字和“开始！”由 Canvas/HTML 绘制，位图只提供透明的框与效果。
 
 ## 分批计划
-1. **本轮样本（待生成）：** `tank-red.png`、`tile-brick-3.png`、`fx-explosion.png`。
+1. **历史样本计划（已完成）：** `tank-red.png`、`tile-brick-3.png`、`fx-explosion.png` 已生成并接入。本文件保留为工业主题的制作简报；当前运行时素材清单另见 `asset-manifest.md`。
 2. **确认样本风格后：** 生成所有其余清单项目；四种坦克只变换主色、其余结构一致。
 3. **最终检查：** Alpha、文件尺寸、命名、无缝拼接、耐久可辨性、帧布局、锚点与 Canvas 回退；交付 `asset-manifest.md` 和 `frontend-style-prompt.md`。
 

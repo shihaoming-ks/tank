@@ -2,6 +2,8 @@
 
 本文件用于 `game-asset-forge`。每套提示词都覆盖**当前渲染器实际接入的全部资产**，只改变美术风格和对应的前端主题值。生成时选择一个完整区块提交，不要混用不同主题的资产。
 
+> **实施状态（2026-07-29）：**`industrial`、`pixel`、`cartoon`、`neon` 四套资产和对应前端风格均已接入。本文是后续重绘、补图或新增主题时的生产基线，不代表待办清单。除下表核心资产外，五种 `pickup-*.png` 也已在大厅说明和战场渲染中使用。
+
 ## 项目固定接入规格
 
 以下约束已写入四套提示词，用于理解和验收。**渲染器实际 `preload` 的文件列表如下，只需生成这些文件：**
@@ -13,12 +15,13 @@
 | 地形 | `tile-ground.png` `tile-border-steel.png` `tile-brick-3.png` `tile-steel.png` | 32×32 |
 | 特效 | `fx-hit.png` `fx-wall-spark.png` `fx-explosion.png` `fx-brick-debris.png` `fx-ram.png` | 256×64（横向4帧） |
 | HUD | `ui-hp-pip-full.png` `ui-hp-pip-empty.png` | 14×10 |
+| 道具 | `pickup-shield.png` `pickup-boost.png` `pickup-power.png` `pickup-health.png` `pickup-revive.png` | 32×32 |
 
 **不需要生成**（渲染器用几何绘制回退，无接入点）：
 - `tile-brick-1.png`、`tile-brick-2.png`：渲染器统一用 `tile-brick-3.png`，裂纹通过 Canvas 叠加
 - `ui-self-ring.png`：用 `strokeRect` 几何绘制
 - `ui-panel-corner.png`、`ui-countdown-frame.png`、`ui-go-frame.png`：无渲染器接入点
-- `fx-countdown-pulse.png`、`fx-start-burst.png`：倒计时与开局用几何动画
+- `fx-countdown-pulse.png`、`fx-start-burst.png`：倒计时与开局用几何动画；工业主题中的历史试作文件不构成运行时契约
 
 **通用约束：**
 - 主题目录：`assets/<theme>/`，主题值依次为 `industrial`、`pixel`、`cartoon`、`neon`
