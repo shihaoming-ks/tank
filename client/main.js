@@ -624,14 +624,33 @@ function clearRoomCode() {
   syncRoomCode();
 }
 roomDigits.forEach((input, index) => {
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Backspace') {
+      if (input.value) {
+        // 已有值时退格：清空当前格（不跳格，方便立即输入新值）
+        e.preventDefault();
+        input.value = '';
+        syncRoomCode();
+      } else if (index > 0) {
+        // 空格退格：跳到上一格
+        roomDigits[index - 1].focus();
+      }
+      return;
+    }
+    if (e.key === 'Enter') { els.btnJoin.click(); return; }
+    // 数字键：直接覆盖当前格并跳到下一格
+    const digit = e.key.replace(/\D/g, '');
+    if (!digit) return;
+    e.preventDefault();
+    input.value = digit;
+    syncRoomCode();
+    if (index < roomDigits.length - 1) roomDigits[index + 1].focus();
+  });
+  // input 事件保留，处理移动端软键盘直接输入的情况
   input.addEventListener('input', () => {
     input.value = input.value.replace(/\D/g, '').slice(-1);
     if (input.value && index < roomDigits.length - 1) roomDigits[index + 1].focus();
     syncRoomCode();
-  });
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Backspace' && !input.value && index > 0) roomDigits[index - 1].focus();
-    if (e.key === 'Enter') els.btnJoin.click();
   });
   input.addEventListener('paste', (e) => {
     const digits = (e.clipboardData?.getData('text') ?? '').replace(/\D/g, '').slice(0, 4);
