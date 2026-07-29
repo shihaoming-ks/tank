@@ -57,6 +57,7 @@
 
 import { END_REASON, MATCH_DURATION_MS, MAX_HP, PHASE, ROOM_MAX } from '/shared/constants.js';
 import { C2S, S2C, isValidRoomId, normalizeNickname } from '/shared/protocol.js';
+import { audio } from './audio.js';
 import { Feed } from './feed.js';
 import { InputController } from './input.js';
 import { Net } from './net.js';
@@ -109,6 +110,7 @@ const els = {
   overlay: $('#overlay-disconnect'),
   disconnectReason: $('#disconnect-reason'),
   toast: $('#toast'),
+  btnMute: $('#btn-mute'),
 };
 
 /** 本地会话状态。仅缓存服务端下发的数据，不做任何推断 */
@@ -203,6 +205,16 @@ function applyTheme(theme, persist = true) {
 
 applyTheme(localStorage.getItem(THEME_KEY) ?? 'industrial', false);
 els.themeSelect.addEventListener('change', () => applyTheme(els.themeSelect.value));
+
+// ── 静音开关 ─────────────────────────────────────────────────────────────
+const MUTE_KEY = 'tank:muted';
+audio.muted = localStorage.getItem(MUTE_KEY) === '1';
+els.btnMute.textContent = audio.muted ? '🔇' : '🔊';
+els.btnMute.addEventListener('click', () => {
+  audio.muted = !audio.muted;
+  els.btnMute.textContent = audio.muted ? '🔇' : '🔊';
+  localStorage.setItem(MUTE_KEY, audio.muted ? '1' : '0');
+});
 // 关闭标签页后仍可恢复；主动离开时会显式清除。
 const RESUME_KEY = 'tank:resume';
 
@@ -412,23 +424,50 @@ function loop() {
 
 net.onStatus = (status, detail) => {
   const map = {
-    connecting: ['连接中…', 'pending'],
-    open: ['已连接', 'ok'],
-    closed: ['已断开', 'bad'],
-    error: ['连接失败', 'bad'],
+    connecting:   ['连接中…',  'pending'],
+    open:         ['已连接',   'ok'],
+    closed:       ['已断开',   'bad'],
+    error:        ['连接失败', 'bad'],
+    reconnected:  ['已重连',   'ok'],
   };
   const [text, cls] = map[status] ?? [status, 'pending'];
   els.status.textContent = text;
   els.statusDot.className = `dot dot-${cls}`;
 
+  if (status === 'reconnected') {
+    // 重连成功：收起遮罩，发送 resume token
+    els.overlay.hidden = true;
+    input.setEnabled(false); // 等服务端回 ROOM 后再开
+    const resume = loadResume();
+    if (resume) net.send(C2S.RESUME, resume);
+    return;
+  }
+
   if (status === 'closed' || status === 'error') {
-    // 断连是致命状态：直接遮罩，避免用户在失效界面上继续操作
     input.setEnabled(false);
-    els.overlay.hidden = false;
+    // 服务端主动 SHUTDOWN（如重启）或无 token：直接锁死遮罩
     if (detail?.shutdownMessage) {
       els.disconnectReason.textContent = detail.shutdownMessage;
+      net.cancelReconnect();
+      els.overlay.hidden = false;
+      return;
+    }
+    const resume = loadResume();
+    if (resume && status === 'closed') {
+      // 有 token 且是异常断线：开启自动重连，显示"重连中"
+      net.autoReconnect = true;
+      els.disconnectReason.textContent = '正在重新连接…';
+      els.overlay.hidden = false;
+    } else {
+      // 无 token 或 error（WS 建立即失败）：锁死
+      net.cancelReconnect();
+      els.overlay.hidden = false;
     }
   }
+};
+
+net.onReconnectAttempt = (count, delay) => {
+  els.disconnectReason.textContent = `正在重新连接… (第 ${count} 次，${delay / 1000}s 后)`;
 };
 
 // ---------------- 消息处理 ----------------
@@ -469,12 +508,34 @@ net.on(S2C.EVENT, (msg) => {
   // 特效与战报是同一批事件的两种消费方式
   renderer.handleEvents(events);
   feed.handleEvents(events);
+  // 音效
+  for (const ev of events) {
+    switch (ev.kind) {
+      case 'hit':       audio.hit();     break;
+      case 'kill':
+        if (ev.actorId === state.selfId) audio.explode();
+        else audio.hit();
+        break;
+      case 'countdown': audio.countTick(); break;
+      case 'start':     audio.countGo();   break;
+      case 'pickup_take':
+        if (ev.actorId === state.selfId) audio.pickup();
+        break;
+      case 'upgrade':
+        if (ev.actorId === state.selfId) audio.upgrade();
+        break;
+      case 'respawn':
+        if (ev.revive && ev.actorId === state.selfId) audio.reviveArmor();
+        break;
+    }
+  }
   drawFrame();
 });
 
 net.on(S2C.OVER, (msg) => {
   state.result = msg;
   feed.handleOver(msg);
+  audio.over();
   showResult(msg);
 });
 
@@ -750,6 +811,7 @@ function leaveRoom() {
   state.result = null;
   state.spectator = false;
   localStorage.removeItem(RESUME_KEY);
+  net.cancelReconnect(); // 主动离开，不再自动重连
   renderer.clearEffects();
   clearRoomCode();
   els.overlayOver.hidden = true;

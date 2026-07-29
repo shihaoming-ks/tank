@@ -743,6 +743,8 @@ body:not([data-theme='industrial'])::before { content:''; position:fixed; inset:
 .brand { font-size:15px; color:var(--acid); letter-spacing:.22em; text-shadow:0 0 10px rgb(246 174 45 / 28%); }
 .brand::before { content:'◈ '; color:var(--signal); }
 .conn { padding:6px 10px; border:1px solid var(--line); background:rgb(39 44 34 / 70%); }
+.btn-mute { padding:4px 7px; font-size:14px; line-height:1; border-radius:4px; opacity:.65; transition:opacity .15s; }
+.btn-mute:hover { opacity:1; }
 .view { width:min(540px,100%); }
 .panel { position:relative; overflow:hidden; padding:34px; border:1px solid var(--line-bright); border-radius:2px; background:var(--panel); box-shadow:4px 4px 0 rgb(0 0 0 / 28%),0 28px 80px rgb(0 0 0 / 48%); }
 .panel::after { content:''; position:absolute; top:12px; right:14px; color:rgb(246 174 45 / 38%); font-size:9px; letter-spacing:.16em; }

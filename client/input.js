@@ -8,6 +8,7 @@
 
 import { C2S } from '/shared/protocol.js';
 import { DIR } from '/shared/constants.js';
+import { audio } from './audio.js';
 
 const KEY_MAP = {
   ArrowUp: DIR.UP,
@@ -74,6 +75,7 @@ export class InputController {
       e.preventDefault();
       // 射击冷却由服务端裁决，客户端无脑上报即可
       this.net.send(C2S.FIRE, {});
+      audio.fire();
       return;
     }
 

@@ -30,6 +30,14 @@ export class Net {
     /** 服务端主动关闭时下发的原因，用于区分"服务重启"与"网络异常" */
     this.shutdownMessage = null;
     this.url = resolveWsUrl();
+    /** 自动重连定时器 */
+    this._reconnectTimer = null;
+    /** 当前重连尝试次数 */
+    this._retryCount = 0;
+    /** 重连回调：外部设置，每次触发前调用（用于更新 UI 状态） */
+    this.onReconnectAttempt = null;
+    /** 是否允许自动重连（断线时若有 token 则允许） */
+    this.autoReconnect = false;
   }
 
   connect() {
@@ -62,6 +70,10 @@ export class Net {
           shutdownMessage: this.shutdownMessage,
         });
         console.warn('[net] 连接关闭', ev.code, ev.reason);
+        // 自动重连：非正常关闭（code !== 1000）且开启了重连时触发
+        if (this.autoReconnect && ev.code !== 1000) {
+          this._scheduleReconnect();
+        }
       });
 
       ws.addEventListener('error', () => {
@@ -112,5 +124,30 @@ export class Net {
   setStatus(status, detail) {
     this.status = status;
     this.onStatus?.(status, detail);
+  }
+
+  /** 计划一次指数退避重连（最长 16s） */
+  _scheduleReconnect() {
+    clearTimeout(this._reconnectTimer);
+    const delay = Math.min(1000 * 2 ** this._retryCount, 16000);
+    this._retryCount++;
+    this.onReconnectAttempt?.(this._retryCount, delay);
+    this._reconnectTimer = setTimeout(async () => {
+      try {
+        await this.connect();
+        this._retryCount = 0;
+        this.setStatus('reconnected');
+      } catch {
+        // connect 失败会触发 close，从而再次调用 _scheduleReconnect
+      }
+    }, delay);
+  }
+
+  /** 停止自动重连 */
+  cancelReconnect() {
+    this.autoReconnect = false;
+    clearTimeout(this._reconnectTimer);
+    this._reconnectTimer = null;
+    this._retryCount = 0;
   }
 }
