@@ -779,6 +779,15 @@ h1 { font-size:24px; color:var(--paper); letter-spacing:.14em; }
 .btn { border-radius:2px; border-color:var(--line-bright); font-weight:600; }
 .btn-primary { color:var(--ink); background:var(--acid); border-color:var(--acid); box-shadow:0 8px 18px rgb(246 174 45 / 15%); }
 .btn-primary:hover:not(:disabled) { color:var(--ink); background:#ffbe50; box-shadow:0 10px 24px rgb(246 174 45 / 25%); }
+/* 道具说明折叠区 */
+.pickup-guide { margin-top:18px; border-top:1px solid var(--line-bright); padding-top:14px; }
+.pickup-guide summary { cursor:pointer; user-select:none; list-style:none; color:var(--paper); font-size:12px; letter-spacing:.08em; opacity:.55; transition:opacity .15s; }
+.pickup-guide summary::-webkit-details-marker { display:none; }
+.pickup-guide[open] summary, .pickup-guide summary:hover { opacity:.9; }
+.pickup-list { list-style:none; margin:10px 0 6px; padding:0; display:flex; flex-direction:column; gap:6px; }
+.pickup-list li { display:flex; align-items:baseline; gap:8px; font-size:13px; color:var(--muted); line-height:1.4; }
+.pk-icon { font-size:15px; flex-shrink:0; line-height:1; }
+.pickup-tip { margin:4px 0 0; font-size:11px; color:var(--muted); opacity:.55; line-height:1.5; }
 .divider span { background:var(--panel); }
 .roster { border-radius:2px; background:rgb(18 21 15 / 54%); }
 .roster-item { transition:background .16s, padding-left .16s; }.roster-item:hover { background:rgb(246 174 45 / 6%); padding-left:16px; }
