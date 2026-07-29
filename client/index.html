@@ -41,18 +41,11 @@
 
         <label class="field">
           <span class="field-label">房间号</span>
-          <div id="room-code" class="room-code">
-            <!-- 单 input + CSS letter-spacing 伪造 4 格，彻底消除跨格跳焦问题 -->
-            <input id="input-roomcode"
-              class="room-code-input"
-              type="text"
-              inputmode="numeric"
-              pattern="[0-9]*"
-              maxlength="4"
-              autocomplete="one-time-code"
-              placeholder="0000"
-              aria-label="4 位房间号"
-            />
+          <div id="room-code" class="room-code" role="group" aria-label="房间号">
+            <input class="room-digit" inputmode="numeric" autocomplete="one-time-code" aria-label="房间号第 1 位" />
+            <input class="room-digit" inputmode="numeric" aria-label="房间号第 2 位" />
+            <input class="room-digit" inputmode="numeric" aria-label="房间号第 3 位" />
+            <input class="room-digit" inputmode="numeric" aria-label="房间号第 4 位" />
             <input id="input-roomid" type="hidden" />
           </div>
         </label>
