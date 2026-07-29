@@ -624,34 +624,55 @@ function clearRoomCode() {
   syncRoomCode();
 }
 roomDigits.forEach((input, index) => {
+  // ── 物理键盘：keydown 处理退格 / 确认 / 数字覆盖 ──────────────────────
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Backspace') {
       if (input.value) {
-        // 已有值时退格：清空当前格（不跳格，方便立即输入新值）
         e.preventDefault();
         input.value = '';
         syncRoomCode();
       } else if (index > 0) {
-        // 空格退格：跳到上一格
         roomDigits[index - 1].focus();
       }
       return;
     }
     if (e.key === 'Enter') { els.btnJoin.click(); return; }
-    // 数字键：直接覆盖当前格并跳到下一格
+
     const digit = e.key.replace(/\D/g, '');
     if (!digit) return;
+
+    // preventDefault 阻止浏览器默认插入；手动写值后用 setTimeout 延迟 focus，
+    // 防止 Safari 把当前按键事件继续路由到下一个获焦元素（导致"填两格"）
     e.preventDefault();
     input.value = digit;
     syncRoomCode();
-    if (index < roomDigits.length - 1) roomDigits[index + 1].focus();
+    if (index < roomDigits.length - 1) {
+      setTimeout(() => roomDigits[index + 1].focus(), 0);
+    }
   });
-  // input 事件保留，处理移动端软键盘直接输入的情况
+
+  // ── 移动端软键盘：beforeinput 在字符写入前清空当前格 ──────────────────
+  // Safari 移动端 e.key 为 "Unidentified"，keydown 无法拦截，
+  // 而 maxlength=1 会阻止追加字符导致 input 事件不触发；
+  // beforeinput 在字符真正写入前清空，使 maxlength 不再阻塞，input 正常触发
+  input.addEventListener('beforeinput', (e) => {
+    const digit = (e.data ?? '').replace(/\D/g, '');
+    if (e.inputType === 'insertText' && digit) {
+      input.value = ''; // 清空后新字符可以被接受
+    }
+  });
+
+  // ── input：处理软键盘写入结果（物理键盘已被 keydown+preventDefault 拦截）
   input.addEventListener('input', () => {
-    input.value = input.value.replace(/\D/g, '').slice(-1);
-    if (input.value && index < roomDigits.length - 1) roomDigits[index + 1].focus();
+    const val = input.value.replace(/\D/g, '').slice(-1);
+    input.value = val;
+    if (val && index < roomDigits.length - 1) {
+      setTimeout(() => roomDigits[index + 1].focus(), 0);
+    }
     syncRoomCode();
   });
+
+  // ── 粘贴：一次性填满所有格 ─────────────────────────────────────────────
   input.addEventListener('paste', (e) => {
     const digits = (e.clipboardData?.getData('text') ?? '').replace(/\D/g, '').slice(0, 4);
     if (!digits) return;
