@@ -24,6 +24,8 @@ import {
   PICKUP_RADIUS,
   PICKUP_SPAWN_INTERVAL_MS,
   PICKUP_TYPE,
+  PICKUP_WEIGHT,
+  HEALTH_RESTORE,
   BRICK_DROP_CHANCE,
   RAM_COOLDOWN_MS,
   RAM_DAMAGE,
@@ -60,6 +62,22 @@ import {
 let playerSeq = 0;
 let bulletSeq = 0;
 let pickupSeq = 0;
+
+/**
+ * 按权重随机选取一个键。
+ * @param {Record<string,number>} weightMap  key → weight
+ * @returns {string}
+ */
+function weightedRandom(weightMap) {
+  const keys    = Object.keys(weightMap);
+  const total   = keys.reduce((s, k) => s + weightMap[k], 0);
+  let   roll    = Math.random() * total;
+  for (const k of keys) {
+    roll -= weightMap[k];
+    if (roll <= 0) return k;
+  }
+  return keys[keys.length - 1];
+}
 
 export class Room {
   /**
@@ -211,6 +229,8 @@ export class Room {
       shieldUntil: 0,
       boostUntil: 0,
       powerUntil: 0,
+      /** 复活甲：下次消灭时自动复活（true = 持有，消耗后变 false） */
+      hasRevive: false,
     };
 
     this.players.set(player.id, player);
@@ -384,6 +404,7 @@ export class Room {
       p.shieldUntil = 0;
       p.boostUntil = 0;
       p.powerUntil = 0;
+      p.hasRevive = false;
       // 地图每局重新生成，必须重新下发给所有玩家
       this.needMap.add(p.id);
     }
@@ -554,6 +575,22 @@ export class Room {
 
     if (victim.hp > 0) return;
 
+    // 复活甲：相撞致死也可触发
+    if (victim.hasRevive) {
+      victim.hasRevive = false;
+      victim.hp = Math.ceil(MAX_HP / 2);
+      victim.invulnUntil = Date.now() + RESPAWN_INVULN_MS;
+      this.pushEvent({
+        kind: EVENT_KIND.RESPAWN,
+        actorId: victim.id,
+        actor: victim.nickname,
+        color: victim.color,
+        revive: 1,
+      });
+      logger.info({ evt: 'revive_armor_ram', roomId: this.id, victimId: victim.id });
+      return;
+    }
+
     victim.alive = false;
     victim.moveDir = null;
     victim.deaths++;
@@ -608,10 +645,9 @@ export class Room {
       now - this.lastPickupSpawnAt >= PICKUP_SPAWN_INTERVAL_MS
     ) {
       this.lastPickupSpawnAt = now;
-      const types = Object.values(PICKUP_TYPE);
       const pos = this._randomPickupPos();
       if (pos) {
-        const type = types[Math.floor(Math.random() * types.length)];
+        const type = weightedRandom(PICKUP_WEIGHT);
         const pickup = { id: `pk${++pickupSeq}`, type, x: pos.x, y: pos.y };
         this.pickups.push(pickup);
         this.pushEvent({ kind: EVENT_KIND.PICKUP_SPAWN, ...pickup });
@@ -627,15 +663,7 @@ export class Room {
         if (Math.hypot(tank.x - pickup.x, tank.y - pickup.y) > PICKUP_RADIUS) continue;
 
         // 应用效果
-        const dur = PICKUP_DURATION[pickup.type];
-        if (pickup.type === PICKUP_TYPE.SHIELD) {
-          tank.shieldUntil = now + dur;
-          tank.invulnUntil = Math.max(tank.invulnUntil, tank.shieldUntil);
-        } else if (pickup.type === PICKUP_TYPE.BOOST) {
-          tank.boostUntil = now + dur;
-        } else if (pickup.type === PICKUP_TYPE.POWER) {
-          tank.powerUntil = now + dur;
-        }
+        this._applyPickup(tank, pickup, now);
 
         this.pushEvent({
           kind: EVENT_KIND.PICKUP_TAKE,
@@ -644,6 +672,8 @@ export class Room {
           actorId: tank.id,
           actor: tank.nickname,
           color: tank.color,
+          // 血包额外附带回血后 hp，便于客户端战报显示
+          hp: tank.hp,
         });
 
         taken = true;
@@ -652,6 +682,29 @@ export class Room {
       if (!taken) remaining.push(pickup);
     }
     this.pickups = remaining;
+  }
+
+  /** 将道具效果施加到坦克 */
+  _applyPickup(tank, pickup, now) {
+    const dur = PICKUP_DURATION[pickup.type];
+    switch (pickup.type) {
+      case PICKUP_TYPE.SHIELD:
+        tank.shieldUntil = now + dur;
+        tank.invulnUntil = Math.max(tank.invulnUntil, tank.shieldUntil);
+        break;
+      case PICKUP_TYPE.BOOST:
+        tank.boostUntil = now + dur;
+        break;
+      case PICKUP_TYPE.POWER:
+        tank.powerUntil = now + dur;
+        break;
+      case PICKUP_TYPE.HEALTH:
+        tank.hp = Math.min(MAX_HP, tank.hp + HEALTH_RESTORE);
+        break;
+      case PICKUP_TYPE.REVIVE:
+        tank.hasRevive = true;
+        break;
+    }
   }
 
   /** 推进所有子弹，处理撞墙与命中 */
@@ -686,8 +739,7 @@ export class Room {
           if (broken && Math.random() < BRICK_DROP_CHANCE && this.pickups.length < PICKUP_MAX) {
             const cx = next.col * TILE + TILE / 2;
             const cy = next.row * TILE + TILE / 2;
-            const types = Object.values(PICKUP_TYPE);
-            const type  = types[Math.floor(Math.random() * types.length)];
+            const type   = weightedRandom(PICKUP_WEIGHT);
             const pickup = { id: `pk${++pickupSeq}`, type, x: cx, y: cy };
             this.pickups.push(pickup);
             this.pushEvent({ kind: EVENT_KIND.PICKUP_SPAWN, ...pickup });
@@ -747,6 +799,22 @@ export class Room {
     });
 
     if (victim.hp > 0) return;
+
+    // ---- 复活甲：免死一次 ----
+    if (victim.hasRevive) {
+      victim.hasRevive = false;
+      victim.hp = Math.ceil(MAX_HP / 2); // 复活后半血
+      victim.invulnUntil = Date.now() + RESPAWN_INVULN_MS;
+      this.pushEvent({
+        kind: EVENT_KIND.RESPAWN,
+        actorId: victim.id,
+        actor: victim.nickname,
+        color: victim.color,
+        revive: 1, // 标记为复活甲触发，客户端显示特殊提示
+      });
+      logger.info({ evt: 'revive_armor', roomId: this.id, victimId: victim.id });
+      return;
+    }
 
     // ---- 淘汰 ----
     victim.alive = false;
@@ -990,6 +1058,7 @@ export class Room {
           shieldUntil: p.shieldUntil,
           boostUntil: p.boostUntil,
           powerUntil: p.powerUntil,
+          hasRevive: p.hasRevive ? 1 : 0,
         })),
       bullets: this.bullets.map((b) => ({
         id: b.id,

@@ -210,22 +210,27 @@ export const COLORS = ['#e94f37', '#3f88c5', '#44bba4', '#f6ae2d'];
 // ---------- 道具 ----------
 /** 道具类型 */
 export const PICKUP_TYPE = {
-  /** 护盾：拾取后无敌 3 秒 */
+  /** 护盾：拾取后无敌 1.5 秒 */
   SHIELD: 'shield',
-  /** 加速：拾取后移速翻倍 5 秒 */
+  /** 加速：拾取后移速翻倍 3 秒 */
   BOOST: 'boost',
   /** 强化：拾取后子弹伤害翻倍 5 秒 */
   POWER: 'power',
+  /** 血包：即时回血 2 点，不超上限 */
+  HEALTH: 'health',
+  /** 复活甲：下次被消灭时自动复活（仅一次） */
+  REVIVE: 'revive',
 };
 
-/** 道具持续时间（ms） */
+/** 道具持续时间（ms）。即时效果道具（HEALTH/REVIVE）不需要此字段 */
 export const PICKUP_DURATION = {
-  /** 护盾：缩短到 1.5 秒，避免无敌时间过长影响对抗体验 */
   [PICKUP_TYPE.SHIELD]: 1500,
-  /** 加速：缩短到 3 秒，适当的战术窗口 */
-  [PICKUP_TYPE.BOOST]: 3000,
-  [PICKUP_TYPE.POWER]: 5000,
+  [PICKUP_TYPE.BOOST]:  3000,
+  [PICKUP_TYPE.POWER]:  5000,
 };
+
+/** 血包回血量 */
+export const HEALTH_RESTORE = 2;
 
 /** 地图上最多同时存在的道具数（定时刷新上限） */
 export const PICKUP_MAX = 2;
@@ -235,6 +240,18 @@ export const PICKUP_SPAWN_INTERVAL_MS = 20000;
 
 /** 砖块被击破时产生道具的概率（0~1） */
 export const BRICK_DROP_CHANCE = 0.25;
+
+/**
+ * 道具随机抽取权重表。数字越大出现概率越高。
+ * 复活甲权重设为 1（最小），其余道具为 3~4。
+ */
+export const PICKUP_WEIGHT = {
+  [PICKUP_TYPE.SHIELD]: 3,
+  [PICKUP_TYPE.BOOST]:  3,
+  [PICKUP_TYPE.POWER]:  3,
+  [PICKUP_TYPE.HEALTH]: 4,
+  [PICKUP_TYPE.REVIVE]: 1,
+};
 
 /** 道具拾取半径（px）：坦克中心距道具中心小于此值即拾取 */
 export const PICKUP_RADIUS = 20;

@@ -86,23 +86,28 @@ export class Feed {
           this.push(ev.ram ? `${ev.target} 因撞击被淘汰` : `${ev.actor} 淘汰了 ${ev.target}`, { color: ev.color, tone: 'kill' });
           break;
 
-        case EVENT_KIND.RESPAWN:
-          this.push(`${ev.actor} 已复活`, { color: ev.color, tone: 'system' });
-          break;
-
         case EVENT_KIND.HOST:
           this.push(`${ev.actor} 成为房主`, { color: ev.color, tone: 'system' });
           break;
 
         case EVENT_KIND.PICKUP_TAKE: {
-          const PICKUP_NAME = { shield: '护盾', boost: '加速', power: '强化弹' };
+          const PICKUP_NAME = { shield: '护盾', boost: '加速', power: '强化弹', health: '血包', revive: '复活甲' };
           const name = PICKUP_NAME[ev.type] ?? ev.type;
-          this.push(`${ev.actor} 拾取了【${name}】`, { color: ev.color, tone: 'system' });
+          const extra = ev.type === 'health' ? `（回血至 ${ev.hp}）` : '';
+          this.push(`${ev.actor} 拾取了【${name}】${extra}`, { color: ev.color, tone: 'system' });
           break;
         }
 
         case EVENT_KIND.UPGRADE:
           this.push(`⭐ ${ev.actor} 坦克升级！子弹威力提升`, { color: ev.color, tone: 'kill' });
+          break;
+
+        case EVENT_KIND.RESPAWN:
+          if (ev.revive) {
+            this.push(`✨ ${ev.actor} 复活甲触发，死里逃生！`, { color: ev.color, tone: 'system' });
+          } else {
+            this.push(`${ev.actor} 已复活`, { color: ev.color, tone: 'system' });
+          }
           break;
 
         default:

@@ -543,9 +543,10 @@ export class Renderer {
   drawBuffIcons(ctx, tank) {
     const now = Date.now();
     const buffs = [];
-    if (tank.shieldUntil > now) buffs.push({ icon: '🛡', color: '#3f88c5', until: tank.shieldUntil });
-    if (tank.boostUntil  > now) buffs.push({ icon: '⚡', color: '#44bba4', until: tank.boostUntil });
-    if (tank.powerUntil  > now) buffs.push({ icon: '🔥', color: '#f6ae2d', until: tank.powerUntil });
+    if (tank.shieldUntil > now) buffs.push({ icon: '🛡', color: '#3f88c5', until: tank.shieldUntil, dur: 1500 });
+    if (tank.boostUntil  > now) buffs.push({ icon: '⚡', color: '#44bba4', until: tank.boostUntil,  dur: 3000 });
+    if (tank.powerUntil  > now) buffs.push({ icon: '🔥', color: '#f6ae2d', until: tank.powerUntil,  dur: 5000 });
+    if (tank.hasRevive)          buffs.push({ icon: '✨', color: '#c084fc', until: -1,               dur: -1   });
     if (!buffs.length) return;
 
     const iconSize = 11;
@@ -557,13 +558,19 @@ export class Renderer {
     ctx.save();
     buffs.forEach((b, i) => {
       const x = baseX + i * (iconSize + gap);
-      // 剩余时间条（宽度比例）
-      const remain = Math.min(1, (b.until - now) / 5000);
-      ctx.fillStyle = 'rgb(0 0 0 / 55%)';
-      ctx.fillRect(x, baseY, iconSize, 3);
-      ctx.fillStyle = b.color;
-      ctx.fillRect(x, baseY, iconSize * remain, 3);
-      // emoji 图标
+      if (b.dur > 0) {
+        // 有时限 buff：显示剩余比例条
+        const remain = Math.min(1, (b.until - now) / b.dur);
+        ctx.fillStyle = 'rgb(0 0 0 / 55%)';
+        ctx.fillRect(x, baseY, iconSize, 3);
+        ctx.fillStyle = b.color;
+        ctx.fillRect(x, baseY, iconSize * remain, 3);
+      } else {
+        // 复活甲：满格脉冲闪烁
+        const pulse = 0.5 + 0.5 * Math.abs(Math.sin(now / 500));
+        ctx.fillStyle = `rgba(192,132,252,${pulse})`;
+        ctx.fillRect(x, baseY, iconSize, 3);
+      }
       ctx.font         = `${iconSize}px serif`;
       ctx.textAlign    = 'center';
       ctx.textBaseline = 'top';
@@ -614,8 +621,10 @@ export class Renderer {
       shield: '#3f88c5',
       boost:  '#44bba4',
       power:  '#f6ae2d',
+      health: '#e94f37',
+      revive: '#c084fc',
     };
-    const LABEL = { shield: '🛡', boost: '⚡', power: '🔥' };
+    const LABEL = { shield: '🛡', boost: '⚡', power: '🔥', health: '❤️', revive: '✨' };
     const color = COLOR[pk.type] ?? '#fff';
 
     ctx.save();
