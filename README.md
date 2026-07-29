@@ -22,16 +22,6 @@ npm run dev
 
 打开 <http://localhost:8080>。同机测试两个独立玩家时，请使用两个不同浏览器、不同浏览器配置文件，或普通窗口加无痕窗口；同一配置文件共享 `localStorage`，会恢复为同一身份。
 
-若本机代理导致依赖安装失败，仅对当前 PowerShell 会话清空代理后再安装：
-
-```powershell
-$env:HTTP_PROXY=''
-$env:HTTPS_PROXY=''
-$env:http_proxy=''
-$env:https_proxy=''
-npm install
-```
-
 ## 常用命令
 
 | 命令 | 用途 |
