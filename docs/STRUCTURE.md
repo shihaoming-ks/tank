@@ -52,11 +52,10 @@ tank/
 └── docs/
     ├── STRUCTURE.md            # 本文件：目录与分层契约
     ├── SETUP.md                # 环境配置与运行手册
-    └── prd/
-        ├── 00-赛题原文.md
-        ├── 01-PRD-主文档.md
-        ├── 02-PRD-附录A-内部基建部署方案.md
-        └── 03-PLAN.md          # S1~S6 实施路线图
+    ├── 00-赛题原文.md
+    ├── 01-PRD-主文档.md
+    ├── 02-PRD-附录A-内部基建部署方案.md
+    └── PLAN.md                 # S1~S6 实施路线图
 ```
 
 ## 分层规则（不可违反）
@@ -153,8 +152,7 @@ docs/
 ├── S3-ASSET-GENERATION-PROMPT.md  # 单主题完整素材生产提示词
 ├── S3-THEME-ASSET-PROMPTS.md      # 四主题素材、开局动画与前端提示词生产要求
 ├── PROGRESS.md
-├── STRUCTURE.md
-└── prd/
+└── STRUCTURE.md
 
 skills/
 └── game-asset-forge/

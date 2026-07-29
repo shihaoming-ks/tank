@@ -146,7 +146,7 @@ cp .env.example .env
 | [docs/SETUP.md](docs/SETUP.md) | 环境配置与运行手册（含常见问题） |
 | **[docs/DEPLOY.md](docs/DEPLOY.md)** | **部署到无 Node 环境的物理机（离线便携包）** |
 | [docs/STRUCTURE.md](docs/STRUCTURE.md) | 目录结构与分层契约 |
-| [docs/prd/01-PRD-主文档.md](docs/prd/01-PRD-主文档.md) | 完整产品需求 |
-| [docs/prd/02-PRD-附录A-内部基建部署方案.md](docs/prd/02-PRD-附录A-内部基建部署方案.md) | 内部基建部署方案 |
-| [docs/prd/03-PLAN.md](docs/prd/03-PLAN.md) | 实施路线图（S1 纯代码 → S6 基建），含各阶段进展 |
+| [docs/01-PRD-主文档.md](docs/01-PRD-主文档.md) | 完整产品需求 |
+| [docs/02-PRD-附录A-内部基建部署方案.md](docs/02-PRD-附录A-内部基建部署方案.md) | 内部基建部署方案 |
+| [docs/PLAN.md](docs/PLAN.md) | 实施路线图（S1 纯代码 → S6 基建），含各阶段进展 |
 | **[docs/PROGRESS.md](docs/PROGRESS.md)** | **开发进展日志：关键决策的理由、排查过的真实缺陷** |
