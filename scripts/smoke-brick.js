@@ -12,7 +12,14 @@
 
 import { WebSocket } from 'ws';
 import { C2S, EVENT_KIND, S2C, decode, encode } from '../shared/protocol.js';
-import { BLOCKING_TILES, BRICK_HP, COUNTDOWN_MS, TILE, TILE_TYPE } from '../shared/constants.js';
+import {
+  BLOCKING_TILES,
+  BRICK_HP,
+  COUNTDOWN_MS,
+  TANK_SPEED,
+  TILE,
+  TILE_TYPE,
+} from '../shared/constants.js';
 
 const URL = process.env.WS_URL || 'ws://localhost:8080/ws';
 
@@ -123,6 +130,60 @@ function findBrickAhead(map, tank, dir) {
   return null;
 }
 
+const DIR_STEP = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
+
+/**
+ * BFS 找一条通往「能射到某块砖墙」的射击位。
+ *
+ * ⚠️ 为何需要走位而非只看出生点四向：
+ *    障碍比例下调到 8% 后，出生点四向常常一块砖墙都没有，
+ *    测试会静默跳过全部关键断言（实测断言数从 14 掉到 4，
+ *    但因为没有失败项，CI 看起来仍是"绿"的 —— 这种沉默失效比报错更危险）。
+ *
+ * @returns {{ path: string[], aimDir: string, target: {col,row} } | null}
+ */
+function findShootingSpot(map, tank) {
+  const startCol = Math.floor(tank.x / TILE);
+  const startRow = Math.floor(tank.y / TILE);
+  const key = (c, r) => `${c},${r}`;
+
+  const seen = new Set([key(startCol, startRow)]);
+  const queue = [{ col: startCol, row: startRow, path: [] }];
+
+  while (queue.length) {
+    const cur = queue.shift();
+
+    // 当前格是否已能射到砖墙
+    for (const dir of ['right', 'left', 'down', 'up']) {
+      const t = findBrickAhead(map, { x: cur.col * TILE + TILE / 2, y: cur.row * TILE + TILE / 2 }, dir);
+      if (t) return { path: cur.path, aimDir: dir, target: t };
+    }
+
+    if (cur.path.length >= 24) continue; // 限制搜索深度，避免绕全图
+
+    for (const [dir, [dc, dr]] of Object.entries(DIR_STEP)) {
+      const c = cur.col + dc;
+      const r = cur.row + dr;
+      if (BLOCKING_TILES.has(map[r]?.[c]) || map[r]?.[c] === undefined) continue;
+      if (seen.has(key(c, r))) continue;
+      seen.add(key(c, r));
+      queue.push({ col: c, row: r, path: [...cur.path, dir] });
+    }
+  }
+  return null;
+}
+
+/** 沿路径逐格移动。每格 TILE/TANK_SPEED 秒，多给一点余量 */
+async function walkPath(client, path) {
+  const perTile = (TILE / TANK_SPEED) * 1000 + 40;
+  for (const dir of path) {
+    client.send(C2S.INPUT, { dir });
+    await sleep(perTile);
+    client.send(C2S.INPUT, { dir: null });
+    await sleep(30);
+  }
+}
+
 async function main() {
   console.log(`\n连接目标：${URL}\n`);
 
@@ -156,23 +217,16 @@ async function main() {
   check('地图中存在砖墙', brickTotal > 0, `${brickTotal} 格`);
   check('地图中存在钢块', steelTotal > 0, `${steelTotal} 格`);
 
-  // ---------- 2. 找一个能打到砖墙的方向 ----------
+  // ---------- 2. 走到能打到砖墙的位置 ----------
   console.log('\n2. 定位目标砖墙');
   const me = a.tank(idA);
-  let target = null;
-  let aimDir = null;
-  for (const dir of ['right', 'left', 'down', 'up']) {
-    const t = findBrickAhead(a.map, me, dir);
-    if (t) {
-      target = t;
-      aimDir = dir;
-      break;
-    }
-  }
-  if (target) check('找到正前方的砖墙', true, `方向 ${aimDir}`);
+  const spot = findShootingSpot(a.map, me);
 
-  if (!target) {
-    console.log('\n  本局出生位置四向均无砖墙，跳过后续断言');
+  // 地图已确认有砖墙且全图连通，因此必然存在可行的射击位。
+  // 找不到就是真问题，不得静默跳过
+  check('能找到可射击砖墙的位置', Boolean(spot), spot ? `需走 ${spot.path.length} 格` : '搜索失败');
+
+  if (!spot) {
     a.close();
     b.close();
     await sleep(150);
@@ -180,18 +234,34 @@ async function main() {
     return;
   }
 
-  // 转向目标
+  const { path, aimDir, target } = spot;
+  console.log(`   目标砖墙 格(${target.col},${target.row})，走位 ${path.length} 格，瞄准 ${aimDir}`);
+
+  // 走到射击位
+  await walkPath(a, path);
+
+  // 转向目标（短按一下只改朝向）
   a.send(C2S.INPUT, { dir: aimDir });
   await sleep(60);
   a.send(C2S.INPUT, { dir: null });
   await sleep(80);
+
+  // 走位后目标砖墙应仍在射程内
+  const nowAhead = findBrickAhead(a.map, a.tank(idA), aimDir);
+  check(
+    '走位后瞄准方向仍有砖墙',
+    Boolean(nowAhead),
+    nowAhead ? `格(${nowAhead.col},${nowAhead.row})` : '已偏离'
+  );
+  // 以实际瞄到的那块为准 —— 走位可能比预期多走/少走一点
+  const brick = nowAhead ?? target;
 
   // ---------- 3. 逐发击打，验证耐久递减 ----------
   console.log('\n3. 耐久递减与击破');
   a.events = [];
   a.patches = [];
 
-  const tileOf = () => a.map[target.row][target.col];
+  const tileOf = () => a.map[brick.row][brick.col];
   const seenHp = [];
   let broken = false;
 
@@ -226,8 +296,8 @@ async function main() {
   }
   check(
     '双端该格状态一致',
-    b.map[target.row][target.col] === a.map[target.row][target.col],
-    `A=${a.map[target.row][target.col]} B=${b.map[target.row][target.col]}`
+    b.map[brick.row][brick.col] === a.map[brick.row][brick.col],
+    `A=${a.map[brick.row][brick.col]} B=${b.map[brick.row][brick.col]}`
   );
   check('双端整张地图一致', JSON.stringify(a.map) === JSON.stringify(b.map));
 

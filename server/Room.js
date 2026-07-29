@@ -55,10 +55,14 @@ export class Room {
   /**
    * @param {string} id 房间号
    * @param {(room: Room) => void} onEmpty 房间空置回调，由 RoomManager 负责销毁
+   * @param {(room: Room, playerId: string) => void} [onPlayerGone]
+   *        玩家真正离开的回调。用于让 RoomManager 作废其重连凭证 ——
+   *        Room 本身不应知道 token 的存在，故用回调而非反向依赖
    */
-  constructor(id, onEmpty) {
+  constructor(id, onEmpty, onPlayerGone = null) {
     this.id = id;
     this.onEmpty = onEmpty;
+    this.onPlayerGone = onPlayerGone;
     this.phase = PHASE.WAITING;
     /** @type {Map<string, object>} playerId → player */
     this.players = new Map();
@@ -231,6 +235,8 @@ export class Room {
     player.reconnectTimer = null;
     player.connected = true;
     player.ws = ws;
+    // 地图必须重新下发：断线期间砰墙可能已被击破，
+    // 而增量补丁只对当时在线的连接下发过
     this.needMap.add(player.id);
     this.broadcastRoom();
     this.broadcastSnapshot(Date.now());
@@ -250,6 +256,8 @@ export class Room {
     this.needMap.delete(playerId);
     // 离开者遗留的子弹必须清除，否则会出现“幽灵子弹”继续伤害其他人
     this.bullets = this.bullets.filter((b) => b.ownerId !== playerId);
+    // 玩家已真正离开，其重连凭证应立即作废
+    this.onPlayerGone?.(this, playerId);
 
     logger.info({
       evt: 'player_leave',
@@ -692,14 +700,16 @@ export class Room {
           color: p.color,
           hp: p.hp,
           kills: p.kills,
-        connected: p.connected,
-        spectator: p.spectator,
           deaths: p.deaths,
           alive: p.alive,
+          connected: p.connected,
           spectator: p.spectator,
         }))
-        // 击杀降序，其次剩余血量降序，便于直接作为排名展示
-        .sort((a, b) => Number(a.spectator) - Number(b.spectator) || b.kills - a.kills || b.hp - a.hp),
+        // 观战者沉底，其余按击杀降序、再按剩余血量降序，便于直接作为排名展示
+        .sort(
+          (a, b) =>
+            Number(a.spectator) - Number(b.spectator) || b.kills - a.kills || b.hp - a.hp
+        ),
     };
 
     logger.info({
@@ -815,16 +825,19 @@ export class Room {
       t: this.tick,
       m: this.matchId,
       timeLeft: Math.max(0, MATCH_DURATION_MS - (now - this.startedAt)),
-      tanks: [...this.players.values()].filter((p) => !p.spectator).map((p) => ({
-        id: p.id,
-        x: Math.round(p.x),
-        y: Math.round(p.y),
-        dir: p.dir,
-        hp: p.hp,
-        alive: p.alive,
-        // 仅在无敌期内下发，避免每帧传递无意义字段
-        inv: now < p.invulnUntil ? 1 : 0,
-      })),
+      // 观战者无坦克实体，不进入快照
+      tanks: [...this.players.values()]
+        .filter((p) => !p.spectator)
+        .map((p) => ({
+          id: p.id,
+          x: Math.round(p.x),
+          y: Math.round(p.y),
+          dir: p.dir,
+          hp: p.hp,
+          alive: p.alive,
+          // 仅在无敌期内下发，避免每帧传递无意义字段
+          inv: now < p.invulnUntil ? 1 : 0,
+        })),
       bullets: this.bullets.map((b) => ({
         id: b.id,
         x: Math.round(b.x),

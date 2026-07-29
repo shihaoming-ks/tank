@@ -59,11 +59,46 @@ export class RoomManager {
     return null;
   }
 
+  /**
+   * 登记一个 resumeToken。
+   *
+   * 同一玩家可能因“观战转正”重新签发 token，
+   * 此时必须先作废旧的，否则一人对应多个有效凭证。
+   */
+  registerResumeToken(token, roomId, playerId) {
+    this.revokeResumeTokensOf(roomId, playerId);
+    this.resumeBindings.set(token, { roomId, playerId });
+  }
+
+  /**
+   * 作废某玩家名下的全部 token。
+   *
+   * 必需：`resumeBindings` 不清理就只增不减。
+   * 实测建并离开 10 个房间后，房间已全部销毁（rooms=0）
+   * 而 resumeBindings 仍残留 10 条记录 —— 对长跑进程是真实的内存泄漏。
+   */
+  revokeResumeTokensOf(roomId, playerId) {
+    for (const [token, binding] of this.resumeBindings) {
+      if (binding.roomId === roomId && binding.playerId === playerId) {
+        this.resumeBindings.delete(token);
+      }
+    }
+  }
+
+  /** 作废整个房间的全部 token，房间销毁时调用 */
+  revokeRoomTokens(roomId) {
+    for (const [token, binding] of this.resumeBindings) {
+      if (binding.roomId === roomId) this.resumeBindings.delete(token);
+    }
+  }
+
   createRoom() {
     const id = this.genRoomId();
     if (!id) return null;
 
-    const room = new Room(id, (r) => this.destroyRoom(r.id));
+    const room = new Room(id, (r) => this.destroyRoom(r.id), (r, playerId) =>
+      this.revokeResumeTokensOf(r.id, playerId)
+    );
     this.rooms.set(id, room);
     logger.info({ evt: 'room_create', roomId: id, total: this.rooms.size });
     return room;
@@ -74,6 +109,8 @@ export class RoomManager {
     if (!room) return;
     room.dispose();
     this.rooms.delete(roomId);
+    // 房间已不存在，其下所有重连凭证均已无意义，必须同步释放
+    this.revokeRoomTokens(roomId);
     logger.info({ evt: 'room_destroy', roomId, total: this.rooms.size });
   }
 
@@ -156,21 +193,21 @@ export class RoomManager {
         this.sendError(ws, ERR.ROOM_NOT_FOUND);
         return;
       }
-      if (room.isFull && room.phase !== PHASE.PLAYING && room.phase !== PHASE.COUNTDOWN) {
+      // 对局进行中（含倒计时）加入则转为观战：
+      // 此时出生点已分配完毕，直接入场会没有合法位置，
+      // 但直接拒绕又让人无事可做 —— 观战并在下局自动转正是最小摩擦的方案
+      spectator = room.phase === PHASE.PLAYING || room.phase === PHASE.COUNTDOWN;
+      // 满员且非对局中才真正拒绕（对局中满员可以观战）
+      if (room.isFull && !spectator) {
         this.sendError(ws, ERR.ROOM_FULL);
         return;
       }
-      spectator = room.phase === PHASE.PLAYING || room.phase === PHASE.COUNTDOWN;
-      // 对局中不允许中途加入，否则新玩家会以 0 血进场，规则不清晰
-      // 倒计时阶段同样不允许中途加入：此时出生点已分配完毕，
-      // 新玩家会没有合法出生位置
-
     }
 
     const resumeToken = randomUUID();
     const player = room.addPlayer(ws, nickname, resumeToken, spectator);
     this.connBinding.set(ws, { roomId: room.id, playerId: player.id });
-    this.resumeBindings.set(resumeToken, { roomId: room.id, playerId: player.id });
+    this.registerResumeToken(resumeToken, room.id, player.id);
 
     // 先回 joined 让客户端确认自身身份，再广播 room 更新全员列表
     ws.send(
@@ -207,7 +244,18 @@ export class RoomManager {
       return;
     }
     this.connBinding.set(ws, binding);
-    ws.send(encode(S2C.JOINED, { selfId: player.id, roomId: room.id, slot: player.slot, color: player.color, isHost: room.hostId === player.id, resumeToken: token, resumed: true }));
+    ws.send(
+      encode(S2C.JOINED, {
+        selfId: player.id,
+        roomId: room.id,
+        slot: player.slot,
+        color: player.color,
+        isHost: room.hostId === player.id,
+        resumeToken: token,
+        spectator: player.spectator,
+        resumed: true,
+      })
+    );
     logger.info({ evt: 'player_resume', roomId: room.id, playerId: player.id });
   }
 
@@ -230,21 +278,41 @@ export class RoomManager {
       this.sendError(ws, ERR.NOT_HOST);
       return;
     }
-    const queued = [...room.players.values()].filter((p) => p.spectator).sort((a, b) => a.joinedAt - b.joinedAt);
+    // 观战者转正：按加入先后依次入局，先等的人先上
+    const queued = [...room.players.values()]
+      .filter((p) => p.spectator)
+      .sort((a, b) => a.joinedAt - b.joinedAt);
+
     for (const watcher of queued) {
       if (room.isFull) break;
+      // 先移除再重新 addPlayer：观战者 slot 为 -1，
+      // 需走一次完整的 slot/颜色/出生点分配
       room.players.delete(watcher.id);
+      // 旧身份已不存在，其 token 必须作废，否则永久治留在 resumeBindings 里
+      this.revokeResumeTokensOf(room.id, watcher.id);
+
       const resumeToken = randomUUID();
       const promoted = room.addPlayer(watcher.ws, watcher.nickname, resumeToken);
       this.connBinding.set(watcher.ws, { roomId: room.id, playerId: promoted.id });
-      this.resumeBindings.set(resumeToken, { roomId: room.id, playerId: promoted.id });
-      watcher.ws.send(encode(S2C.JOINED, { selfId: promoted.id, roomId: room.id, slot: promoted.slot, color: promoted.color, isHost: room.hostId === promoted.id, resumeToken }));
+      this.registerResumeToken(resumeToken, room.id, promoted.id);
+
+      watcher.ws.send(
+        encode(S2C.JOINED, {
+          selfId: promoted.id,
+          roomId: room.id,
+          slot: promoted.slot,
+          color: promoted.color,
+          isHost: room.hostId === promoted.id,
+          resumeToken,
+          spectator: false,
+        })
+      );
     }
+
     if (!room.canStart) {
       this.sendError(ws, ERR.NOT_ENOUGH_PLAYERS);
       return;
     }
-    // 已在对局中则忽略，避免重复点击把正在进行的对局重置
     // 已在对局中（含倒计时）则忽略，防止重复点击重置对局
     if (room.phase === PHASE.PLAYING || room.phase === PHASE.COUNTDOWN) return;
 
