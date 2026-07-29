@@ -813,6 +813,26 @@ body[data-theme='pixel'] .topbar, body[data-theme='pixel'] .panel, body[data-the
 body[data-theme='pixel'] .panel::after { content:'ARCADE // 01'; color:var(--signal); }
 body[data-theme='pixel'] .btn, body[data-theme='pixel'] .otp-cell, body[data-theme='pixel'] .input { border-radius:0; }
 body[data-theme='pixel'] .brand { text-shadow:3px 3px 0 #412f8d; }
+/* pixel：btn 增强（hover 位移、焦点外描边、禁用可辨） */
+body[data-theme='pixel'] .btn:hover:not(:disabled) { background:var(--panel-2); border-color:var(--paper); transform:translate(-3px,-3px); box-shadow:5px 5px 0 #080716; }
+body[data-theme='pixel'] .btn:focus-visible { outline:2px solid var(--acid); outline-offset:2px; }
+body[data-theme='pixel'] .btn:disabled { opacity:.5; border-style:dashed; transform:none !important; box-shadow:2px 2px 0 #080716 !important; }
+/* pixel：input / otp-cell 焦点用 --acid */
+body[data-theme='pixel'] .input:focus { border-color:var(--acid); box-shadow:0 0 0 2px rgb(103 245 208 / 22%); outline:none; }
+body[data-theme='pixel'] .otp-cell.active { border-color:var(--acid); box-shadow:0 0 0 2px rgb(103 245 208 / 22%); }
+/* pixel：快捷键 kbd 样式 */
+body[data-theme='pixel'] .controls-hint b { display:inline-block; padding:1px 5px; background:#0e0b28; border:1px solid var(--line-bright); color:var(--paper); font-family:'Courier New',Courier,monospace; font-weight:700; letter-spacing:.04em; line-height:1.3; box-shadow:2px 2px 0 #080716; }
+/* pixel：canvas 边框像素感 */
+body[data-theme='pixel'] .canvas { border:3px solid var(--line-bright); box-shadow:6px 6px 0 #080716; }
+/* pixel：战报 feed */
+body[data-theme='pixel'] .feed-wrap { border:2px solid var(--line); }
+body[data-theme='pixel'] .feed-head { border-bottom:2px solid var(--line); letter-spacing:.1em; text-transform:uppercase; font-size:9px; }
+body[data-theme='pixel'] .btn-mini { border-radius:0; box-shadow:2px 2px 0 #080716; }
+body[data-theme='pixel'] .btn-mini:hover { background:var(--panel-2); border-color:var(--line-bright); }
+/* pixel：结算 / 断连 overlay-box 强化 */
+body[data-theme='pixel'] .overlay-box { border:3px double var(--line-bright); }
+/* pixel：连接状态 dot 方块像素感 */
+body[data-theme='pixel'] .dot { border-radius:0; width:8px; height:8px; }
 
 /* 手绘战术：暖纸张、丛林色和圆润贴纸式组件。 */
 body[data-theme='cartoon'] { --ink:#e8dfc6; --panel:#fff8e7; --panel-2:#f4ebd4; --line:#5f7755; --line-bright:#365d4d; --paper:#273b35; --muted:#65746a; --acid:#c9df6b; --signal:#ed9b46; --danger:#d95f50; color:var(--paper); background-color:var(--ink); background-image:radial-gradient(rgb(87 111 80 / 16%) 1px,transparent 1.5px); background-size:11px 11px; }
@@ -860,7 +880,19 @@ body[data-theme='pixel'] .btn { box-shadow:4px 4px 0 #080716; transform:translat
 body[data-theme='pixel'] .btn:active { box-shadow:1px 1px 0 #080716; transform:translate(1px,1px); }
 body[data-theme='pixel'] .view-game { width:min(1060px,100%); padding:10px; }
 body[data-theme='pixel'] .hud { border:3px solid var(--paper); }
+/* pixel：game-foot 快捷键区域做成深色底条 */
+body[data-theme='pixel'] .game-foot { padding:6px 10px; border:2px solid var(--line); background:#0e0b28; }
+/* pixel：淘汰标记文字色 */
+body[data-theme='pixel'] .hud-player.is-dead { opacity:.55; }
+/* pixel：HUD 玩家格子直角像素边 */
+body[data-theme='pixel'] .hud-player { border-radius:0; border:1px solid var(--line); background:var(--panel); }
+body[data-theme='pixel'] .hud-player.is-self { border-color:var(--acid); }
+/* pixel：HUD 计时器等宽数字 */
+body[data-theme='pixel'] .hud-timer { font-family:'Courier New',Courier,monospace; letter-spacing:.06em; border:1px solid var(--line); background:var(--panel); padding:3px 8px; }
 @keyframes pixel-blink { 50% { opacity:.35; } }
+@media (prefers-reduced-motion: reduce) {
+  body[data-theme='pixel'] .panel::before { animation:none; opacity:.6; }
+}
 
 /* 手绘战术：像铺在桌面上的不规则任务卡，而不是仪表面板。 */
 body[data-theme='cartoon'] { padding:112px 24px 38px; place-items:start center; font-family:Georgia,'Noto Serif SC','Songti SC',serif; }
@@ -906,6 +938,7 @@ body[data-theme='neon'] .hud { border-radius:0; clip-path:polygon(0 0,calc(100% 
   body[data-theme='pixel'] .brand { font-size:12px; }
   body[data-theme='pixel'] .view { padding:7px; border-width:3px; }
   body[data-theme='pixel'] .panel { min-height:0; padding:31px 18px 24px; }
+  body[data-theme='pixel'] .hud-timer { font-size:11px; padding:2px 5px; }
   body[data-theme='cartoon'] { padding:92px 12px 24px; }
   body[data-theme='cartoon'] .topbar { inset:15px 12px auto; justify-content:space-between; }
   body[data-theme='cartoon'] .panel { padding:35px 22px 29px; }
