@@ -433,6 +433,22 @@ net.on(S2C.OVER, (msg) => {
 
 net.on(S2C.ERROR, (msg) => {
   console.warn('[app] 服务端错误', msg.code, msg.message);
+
+  if (msg.code === 'BAD_RESUME') {
+    // 重连凭证无效（服务端重启或房间已销毁）：
+    // 清除失效 token，静默回到大厅，不弹错误，
+    // 让用户自然地重新创建/加入房间
+    localStorage.removeItem(RESUME_KEY);
+    state.selfId = null;
+    state.roomId = null;
+    state.room   = null;
+    state.snapshot = null;
+    state.result   = null;
+    state.spectator = false;
+    showView('lobby');
+    return;
+  }
+
   // 统一走全局 Toast，保证任何视图下都可见
   toast(msg.message);
 });
