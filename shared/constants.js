@@ -216,7 +216,7 @@ export const PICKUP_TYPE = {
   BOOST: 'boost',
   /** 强化：拾取后子弹伤害翻倍 5 秒 */
   POWER: 'power',
-  /** 血包：即时回血 2 点，不超上限 */
+  /** 血包：即时回血 1 点，不超上限 */
   HEALTH: 'health',
   /** 复活甲：下次被消灭时自动复活（仅一次） */
   REVIVE: 'revive',
@@ -230,7 +230,7 @@ export const PICKUP_DURATION = {
 };
 
 /** 血包回血量 */
-export const HEALTH_RESTORE = 2;
+export const HEALTH_RESTORE = 1;
 
 /** 地图上最多同时存在的道具数（定时刷新上限） */
 export const PICKUP_MAX = 2;
