@@ -624,55 +624,60 @@ function clearRoomCode() {
   syncRoomCode();
 }
 roomDigits.forEach((input, index) => {
-  // ── 物理键盘：keydown 处理退格 / 确认 / 数字覆盖 ──────────────────────
+  // ── input：唯一的字符处理入口（keydown 不拦截字符，避免 Safari 双触发）──
+  input.addEventListener('input', () => {
+    // 取最后一个数字字符（兼容各种 IME / 软键盘插入多字符的情况）
+    const val = input.value.replace(/\D/g, '').slice(-1);
+    input.value = val;
+    syncRoomCode();
+    if (val && index < roomDigits.length - 1) {
+      roomDigits[index + 1].focus();
+    }
+  });
+
+  // ── keydown：只处理导航键，不碰字符键 ───────────────────────────────────
   input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { els.btnJoin.click(); return; }
+
     if (e.key === 'Backspace') {
       if (input.value) {
-        e.preventDefault();
+        // 有值：清空当前格，不跳格（input 事件会随后触发，再 syncRoomCode）
+        // 直接清空 value，让后续 input 事件处理 sync
         input.value = '';
         syncRoomCode();
       } else if (index > 0) {
         roomDigits[index - 1].focus();
       }
+      e.preventDefault();
       return;
     }
-    if (e.key === 'Enter') { els.btnJoin.click(); return; }
 
-    const digit = e.key.replace(/\D/g, '');
-    if (!digit) return;
+    if (e.key === 'ArrowLeft' && index > 0) {
+      e.preventDefault();
+      roomDigits[index - 1].focus();
+      return;
+    }
+    if (e.key === 'ArrowRight' && index < roomDigits.length - 1) {
+      e.preventDefault();
+      roomDigits[index + 1].focus();
+      return;
+    }
 
-    // preventDefault 阻止浏览器默认插入；手动写值后用 setTimeout 延迟 focus，
-    // 防止 Safari 把当前按键事件继续路由到下一个获焦元素（导致"填两格"）
-    e.preventDefault();
-    input.value = digit;
-    syncRoomCode();
-    if (index < roomDigits.length - 1) {
-      setTimeout(() => roomDigits[index + 1].focus(), 0);
+    // 已有值且即将输入新数字：先清空，让 input 事件接管
+    // （Safari 不触发 beforeinput，用 focus 事件选中全部文字让浏览器自然替换）
+    if (input.value && e.key >= '0' && e.key <= '9') {
+      input.value = '';
+      // 不 preventDefault：让字符正常写入，input 事件接管后续
     }
   });
 
-  // ── 移动端软键盘：beforeinput 在字符写入前清空当前格 ──────────────────
-  // Safari 移动端 e.key 为 "Unidentified"，keydown 无法拦截，
-  // 而 maxlength=1 会阻止追加字符导致 input 事件不触发；
-  // beforeinput 在字符真正写入前清空，使 maxlength 不再阻塞，input 正常触发
-  input.addEventListener('beforeinput', (e) => {
-    const digit = (e.data ?? '').replace(/\D/g, '');
-    if (e.inputType === 'insertText' && digit) {
-      input.value = ''; // 清空后新字符可以被接受
-    }
+  // ── focus：选中当前格全部内容（方便直接覆盖）────────────────────────────
+  input.addEventListener('focus', () => {
+    // 延迟到下一帧再 select，兼容 Safari 的 focus 时序
+    requestAnimationFrame(() => input.select());
   });
 
-  // ── input：处理软键盘写入结果（物理键盘已被 keydown+preventDefault 拦截）
-  input.addEventListener('input', () => {
-    const val = input.value.replace(/\D/g, '').slice(-1);
-    input.value = val;
-    if (val && index < roomDigits.length - 1) {
-      setTimeout(() => roomDigits[index + 1].focus(), 0);
-    }
-    syncRoomCode();
-  });
-
-  // ── 粘贴：一次性填满所有格 ─────────────────────────────────────────────
+  // ── paste：整段粘贴填满所有格 ─────────────────────────────────────────
   input.addEventListener('paste', (e) => {
     const digits = (e.clipboardData?.getData('text') ?? '').replace(/\D/g, '').slice(0, 4);
     if (!digits) return;
