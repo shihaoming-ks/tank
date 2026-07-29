@@ -14,6 +14,7 @@
 | 唯一运行时依赖 `ws` 是**纯 JS** | 无 `.node` 原生产物，故可在 macOS 打包、Linux 运行 |
 | 前端零构建 | 原生 ESM + Canvas，没有编译步骤，源码即产物 |
 | Node 官方二进制免安装 | 解压出的 `bin/node` 可直接执行，无需 root、不污染系统 |
+| 老系统有专用构建 | CentOS 7 等 glibc 2.17 环境可用 `glibc-217` 变体 |
 
 > ⚠️ 若将来引入了含原生扩展的依赖（如 `bufferutil`、`sharp`、`better-sqlite3`），
 > 这个方案会失效 —— 必须改为在**目标平台**上执行 `npm install`，或改用 Docker。
@@ -37,19 +38,44 @@ TARGET=darwin-arm64 bash scripts/build-portable.sh
 
 ### 怎么确认目标平台
 
-在目标机执行：
+在目标机执行**两条**命令：
 
 ```bash
-uname -sm
+uname -m        # CPU 架构
+ldd --version   # glibc 版本 ← 别漏这条
 ```
 
-| 输出 | 对应 TARGET |
-|---|---|
-| `Linux x86_64` | `linux-x64` |
-| `Linux aarch64` | `linux-arm64` |
-| `Darwin arm64` | `darwin-arm64` |
+| `uname -m` | `ldd` 版本 | TARGET |
+|---|---|---|
+| `x86_64` | ≥ 2.28 | `linux-x64` |
+| `x86_64` | **< 2.28**（CentOS 7 / RHEL 7 是 2.17） | **`linux-x64-glibc-217`** |
+| `aarch64` | ≥ 2.28 | `linux-arm64` |
 
-**平台填错的症状**是启动时报 `cannot execute binary file: Exec format error`。
+⚠️ **glibc 版本这一条最容易漏，代价却最大。**
+
+官方 Node 二进制从 v18 起要求 glibc ≥ 2.28，而 CentOS 7 只有 2.17。
+用错会在目标机启动时报：
+
+```
+./runtime/bin/node: /lib64/libc.so.6: version `GLIBC_2.28' not found
+./runtime/bin/node: /lib64/libstdc++.so.6: version `GLIBCXX_3.4.21' not found
+```
+
+此时改用 `glibc-217` 变体重新打包即可 —— 它由 nodejs 官方的
+[unofficial-builds](https://unofficial-builds.nodejs.org/) 针对老系统重新编译，
+只依赖到 `GLIBC_2.17` / `GLIBCXX_3.4.19`，恰好是 CentOS 7 提供的上限：
+
+```bash
+TARGET=linux-x64-glibc-217 npm run build:portable
+```
+
+构建时会打印实际的符号依赖，可与目标机对照：
+
+```
+运行时要求：GLIBC_2.17 / GLIBCXX_3.4.19
+```
+
+**架构填错的症状**则是 `cannot execute binary file: Exec format error`。
 
 ---
 
@@ -171,9 +197,24 @@ sudo ufw allow 8080/tcp
 
 云服务器还需在控制台的**安全组**里放行该端口。
 
+### `GLIBC_2.28 not found` / `GLIBCXX_3.4.21 not found`
+
+系统 glibc 太旧（CentOS 7 / RHEL 7 为 2.17，官方 Node 要求 ≥ 2.28）。
+
+```bash
+# 在开发机重新打包
+TARGET=linux-x64-glibc-217 npm run build:portable
+```
+
+`start.sh` 会在启动前自检运行时，遇到这类问题会直接给出上面这条命令，
+不必自己判断。
+
+> 顺带说明：原先的输出会先打印「坦克竞技场启动中」再报 GLIBC 错误，
+> 看起来像应用崩溃、实际是运行时根本没跑起来。现已改为**先自检再打印**。
+
 ### `cannot execute binary file: Exec format error`
 
-平台不匹配。用 `uname -sm` 确认架构后重新打包。
+CPU 架构不匹配。用 `uname -m` 确认后重新打包。
 
 ### `./start.sh: Permission denied`
 

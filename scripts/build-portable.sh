@@ -11,8 +11,17 @@
 #
 # 用法：
 #   bash scripts/build-portable.sh                     # 默认 linux-x64
-#   TARGET=linux-arm64 bash scripts/build-portable.sh  # 指定平台
+#   TARGET=linux-x64-glibc-217 bash scripts/build-portable.sh   # CentOS 7 / RHEL 7
+#   TARGET=linux-arm64 bash scripts/build-portable.sh
 #
+# 【如何选 TARGET】先在目标机执行：
+#   uname -m         → x86_64 则用 x64，aarch64 则用 arm64
+#   ldd --version    → 若 < 2.28 必须用 glibc-217 变体
+#
+# ❌ 错选的症状：
+#   Exec format error                    → CPU 架构错
+#   GLIBC_2.28 not found                 → glibc 太旧，改用 glibc-217
+#   GLIBCXX_3.4.21 not found             → 同上
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -21,6 +30,18 @@ cd "$ROOT"
 NODE_VER="${NODE_VER:-v22.20.0}"
 TARGET="${TARGET:-linux-x64}"
 APP_VER="$(node -p "require('./package.json').version")"
+
+# 旧系统（CentOS 7 / RHEL 7，glibc 2.17）需用专用构建。
+#
+# 官方 Node 从 v18 起要求 glibc ≥ 2.28，在 CentOS 7 上会报
+# “GLIBC_2.28 not found”。unofficial-builds 提供了针对 glibc 2.17
+# 重新编译的变体，它只依赖到 GLIBC_2.17 / GLIBCXX_3.4.19，
+# 恰好是 CentOS 7 提供的上限。
+if [[ "$TARGET" == *glibc-217* ]]; then
+  BASE_URL="https://unofficial-builds.nodejs.org/download/release"
+else
+  BASE_URL="https://nodejs.org/dist"
+fi
 
 NAME="tank-arena-${APP_VER}-${TARGET}"
 DIST="$ROOT/dist"
@@ -56,7 +77,7 @@ if [[ ! -f "$TARBALL" ]]; then
   echo "▸ 下载 Node 运行时（缓存于 .cache/，仅首次需要联网）"
   curl -fL --retry 3 --progress-bar \
     -o "$TARBALL" \
-    "https://nodejs.org/dist/${NODE_VER}/${NODE_DIR_NAME}.tar.xz"
+    "${BASE_URL}/${NODE_VER}/${NODE_DIR_NAME}.tar.xz"
 
   if ! xz -t "$TARBALL" 2>/dev/null; then
     echo "  ✗ 下载的文件不完整，请检查网络后重试" >&2
@@ -80,6 +101,20 @@ tar -xJf "$TARBALL" -C "$CACHE" "${NODE_DIR_NAME}/bin/node"
 cp "$CACHE/${NODE_DIR_NAME}/bin/node" "$STAGE/runtime/bin/node"
 chmod +x "$STAGE/runtime/bin/node"
 rm -rf "$CACHE/${NODE_DIR_NAME}"
+
+# 3.1.1 探测该二进制真实要求的最低系统库版本。
+#
+# ⚠️ 不能只看文件名判断兼容性 —— 必须读实际符号。
+#    实测踩过：官方 linux-x64 包在 CentOS 7 上启动即失败
+#    （GLIBC_2.28 not found），而 start.sh 已经把"启动中"打印出来了，
+#    看起来像是启动成功后才崩，很容易误判为应用问题。
+if [[ "$TARGET" == linux-* ]]; then
+  REQ_GLIBC="$(strings "$STAGE/runtime/bin/node" 2>/dev/null \
+    | grep -oE 'GLIBC_2\.[0-9]+' | sort -uV | tail -1 || echo '未知')"
+  REQ_GLIBCXX="$(strings "$STAGE/runtime/bin/node" 2>/dev/null \
+    | grep -oE 'GLIBCXX_3\.4\.[0-9]+' | sort -uV | tail -1 || echo '未知')"
+  echo "  运行时要求：${REQ_GLIBC} / ${REQ_GLIBCXX}"
+fi
 
 # 3.2 应用源码
 cp -R server shared client "$STAGE/"
@@ -124,6 +159,32 @@ export LOG_LEVEL="${LOG_LEVEL:-info}"
 NODE_BIN="./runtime/bin/node"
 if [[ ! -x "$NODE_BIN" ]]; then
   echo "✗ 找不到内置 Node 运行时：$NODE_BIN" >&2
+  echo "  若经 U 盘中转，可能丢失了执行权限，试试：chmod +x runtime/bin/node" >&2
+  exit 1
+fi
+
+# 先自检运行时能否执行，再打印"启动中"。
+# 否则会出现"启动中"之后才报 GLIBC 错误的误导性输出 ——
+# 看起来像应用崩溃，实际是运行时根本没跑起来。
+if ! NODE_CHECK="$("$NODE_BIN" -v 2>&1)"; then
+  echo "──────────────────────────────────────────────" >&2
+  echo "✗ 内置 Node 运行时无法在本机执行" >&2
+  echo "──────────────────────────────────────────────" >&2
+  echo "$NODE_CHECK" >&2
+  echo "" >&2
+  if echo "$NODE_CHECK" | grep -q "GLIBC\|GLIBCXX\|CXXABI"; then
+    CUR_GLIBC="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$' || echo '未知')"
+    echo "原因：系统 glibc 版本过低（当前 ${CUR_GLIBC}）。" >&2
+    echo "     官方 Node 二进制要求 glibc ≥ 2.28，" >&2
+    echo "     而 CentOS 7 / RHEL 7 只有 2.17。" >&2
+    echo "" >&2
+    echo "解决：请在开发机改用 glibc-217 专版重新打包 ——" >&2
+    echo "     TARGET=linux-x64-glibc-217 npm run build:portable" >&2
+  elif echo "$NODE_CHECK" | grep -q "Exec format error"; then
+    echo "原因：CPU 架构不匹配（本机 $(uname -m)）。" >&2
+    echo "解决：在开发机按正确架构重新打包。" >&2
+  fi
+  echo "──────────────────────────────────────────────" >&2
   exit 1
 fi
 

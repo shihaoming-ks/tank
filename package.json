@@ -18,7 +18,8 @@
     "smoke:combat": "node scripts/smoke-combat.js",
     "smoke:all": "node scripts/smoke-all.js",
     "smoke:brick": "node scripts/smoke-brick.js",
-    "build:portable": "bash scripts/build-portable.sh"
+    "build:portable": "bash scripts/build-portable.sh",
+    "build:portable:centos7": "TARGET=linux-x64-glibc-217 bash scripts/build-portable.sh"
   },
   "keywords": [
     "game",
