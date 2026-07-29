@@ -65,7 +65,7 @@ export const FIRE_COOLDOWN_MS = 300;
 
 // ---------- 战斗规则 ----------
 /** 初始生命值 */
-export const MAX_HP = 3;
+export const MAX_HP = 5;
 /** 复活后无敌时长（ms），防止复活点连杀 */
 export const RESPAWN_INVULN_MS = 2000;
 /** 单局时限（ms） */

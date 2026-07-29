@@ -133,8 +133,9 @@ export class Renderer {
     }));
   }
 
-  /** 获取已缓存图片，没有则返回 null */
+  /** 获取已缓存图片。非 industrial 主题时返回 null，自动走几何回退 */
   _img(name) {
+    if (document.body.dataset.theme !== 'industrial') return null;
     return this._imgs.get(name) ?? null;
   }
 
