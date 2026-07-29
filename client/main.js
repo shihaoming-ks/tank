@@ -661,7 +661,18 @@ if (roomCodeInput) {
   roomCodeInput.addEventListener('mouseup',     () => syncRoomCode());
   roomCodeInput.addEventListener('selectionchange', () => syncRoomCode());
   roomCodeInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') els.btnJoin.click();
+    if (e.key === 'Enter') { els.btnJoin.click(); return; }
+
+    // 如果光标是纯插入点（无选区）且在已有字符位置上，
+    // 把该字符选中 → 后续字符输入自动变"替换"而非"插入"
+    if (e.key >= '0' && e.key <= '9') {
+      const s = roomCodeInput.selectionStart;
+      const end = roomCodeInput.selectionEnd;
+      if (s === end && s < roomCodeInput.value.length) {
+        roomCodeInput.setSelectionRange(s, s + 1);
+        // 不 preventDefault，让浏览器正常插入字符到选区
+      }
+    }
   });
   roomCodeInput.addEventListener('paste', (e) => {
     const digits = (e.clipboardData?.getData('text') ?? '').replace(/\D/g, '').slice(0, 4);
