@@ -71,6 +71,14 @@ export const EVENT_KIND = {
   BRICK_BREAK: 'brick_break',
   /** 坦克相撞 */
   RAM: 'ram',
+  /** 道具生成 */
+  PICKUP_SPAWN: 'pickup_spawn',
+  /** 道具被拾取 */
+  PICKUP_TAKE: 'pickup_take',
+  /** 道具效果到期 */
+  PICKUP_EXPIRE: 'pickup_expire',
+  /** 坦克升级（击杀数达到阈值） */
+  UPGRADE: 'upgrade',
 };
 
 /** 错误码。客户端据此决定提示文案与是否可重试 */

@@ -94,6 +94,17 @@ export class Feed {
           this.push(`${ev.actor} 成为房主`, { color: ev.color, tone: 'system' });
           break;
 
+        case EVENT_KIND.PICKUP_TAKE: {
+          const PICKUP_NAME = { shield: '护盾', boost: '加速', power: '强化弹' };
+          const name = PICKUP_NAME[ev.type] ?? ev.type;
+          this.push(`${ev.actor} 拾取了【${name}】`, { color: ev.color, tone: 'system' });
+          break;
+        }
+
+        case EVENT_KIND.UPGRADE:
+          this.push(`⭐ ${ev.actor} 坦克升级！子弹威力提升`, { color: ev.color, tone: 'kill' });
+          break;
+
         default:
           break;
       }

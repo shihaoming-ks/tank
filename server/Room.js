@@ -19,6 +19,11 @@ import {
   MATCH_DURATION_MS,
   MAX_HP,
   PHASE,
+  PICKUP_DURATION,
+  PICKUP_MAX,
+  PICKUP_RADIUS,
+  PICKUP_SPAWN_INTERVAL_MS,
+  PICKUP_TYPE,
   RAM_COOLDOWN_MS,
   RAM_DAMAGE,
   RESPAWN_INVULN_MS,
@@ -29,6 +34,9 @@ import {
   TANK_SPEED,
   TICK_MS,
   TILE,
+  TILE_TYPE,
+  UPGRADE_BONUS_DAMAGE,
+  UPGRADE_KILLS,
 } from '../shared/constants.js';
 import { S2C, EVENT_KIND, encode } from '../shared/protocol.js';
 import { logger } from './logger.js';
@@ -50,6 +58,7 @@ import {
 
 let playerSeq = 0;
 let bulletSeq = 0;
+let pickupSeq = 0;
 
 export class Room {
   /**
@@ -121,6 +130,15 @@ export class Room {
      */
     this.mapPatches = [];
 
+    /**
+     * 场上活跃道具。
+     * @type {Array<{id:string, type:string, x:number, y:number}>}
+     */
+    this.pickups = [];
+
+    /** 上次刷新道具的时间戳 */
+    this.lastPickupSpawnAt = 0;
+
     // 地图设计错误必须在启动阶段暴露，而非对战中途才发现坦克卡在墙里
     const problems = validateMap(this.grid);
     if (problems.length) {
@@ -186,6 +204,12 @@ export class Room {
       lastFireAt: 0,
       kills: 0,
       deaths: 0,
+      /** 当前等级：0 普通，1 升级（击杀 ≥ UPGRADE_KILLS） */
+      tier: 0,
+      /** 道具效果截止时间 */
+      shieldUntil: 0,
+      boostUntil: 0,
+      powerUntil: 0,
     };
 
     this.players.set(player.id, player);
@@ -318,6 +342,8 @@ export class Room {
     this.bullets = [];
     this.pendingEvents = [];
     this.mapPatches = [];
+    this.pickups = [];
+    this.lastPickupSpawnAt = 0;
     this.result = null;
 
     // 每局重新生成地图，提升重复对战的新鲜感
@@ -353,6 +379,10 @@ export class Room {
       p.lastRamAt = 0;
       p.kills = 0;
       p.deaths = 0;
+      p.tier = 0;
+      p.shieldUntil = 0;
+      p.boostUntil = 0;
+      p.powerUntil = 0;
       // 地图每局重新生成，必须重新下发给所有玩家
       this.needMap.add(p.id);
     }
@@ -418,7 +448,9 @@ export class Room {
       if (!tank.alive || !tank.moveDir) continue;
 
       const others = tanks.filter((t) => t.id !== tank.id);
-      const next = tryMoveTank(tank, tank.moveDir, dt, TANK_SPEED, this.grid, others);
+      // boost 效果期间速度翻倍
+      const speed = now < tank.boostUntil ? TANK_SPEED * 2 : TANK_SPEED;
+      const next = tryMoveTank(tank, tank.moveDir, dt, speed, this.grid, others);
       tank.x = next.x;
       tank.y = next.y;
     }
@@ -429,6 +461,9 @@ export class Room {
 
     // ---- 3. 子弹推进与命中 ----
     this.stepBullets(dt, tanks, now);
+
+    // ---- 4. 道具拾取与刷新 ----
+    this.stepPickups(tanks, now);
 
     // ---- 4. 结束判定 ----
     // 必须在广播快照前执行：若本帧产生胜负，应直接走 endGame 的广播路径，
@@ -535,6 +570,89 @@ export class Room {
     });
   }
 
+  // ---- 道具系统 ----
+
+  /**
+   * 在空地上随机生成一个道具位置（排开障碍和已有道具）。
+   * 返回 {x, y}（像素，格中心），若找不到合适位置则返回 null。
+   */
+  _randomPickupPos() {
+    const COLS = this.grid[0].length;
+    const ROWS = this.grid.length;
+    const candidates = [];
+    for (let r = 1; r < ROWS - 1; r++) {
+      for (let c = 1; c < COLS - 1; c++) {
+        if (this.grid[r][c] === TILE_TYPE.EMPTY) {
+          candidates.push({ x: c * 32 + 16, y: r * 32 + 16 });
+        }
+      }
+    }
+    // 排开已有道具附近格
+    const free = candidates.filter((pos) =>
+      this.pickups.every((pk) => Math.hypot(pk.x - pos.x, pk.y - pos.y) > 64)
+    );
+    if (!free.length) return null;
+    return free[Math.floor(Math.random() * free.length)];
+  }
+
+  /**
+   * 道具刷新与拾取逻辑。每帧调用：
+   *   1. 若道具数不足且间隔到了，补刷至上限
+   *   2. 检测存活坦克与道具的距离，拾取后触发效果
+   */
+  stepPickups(tanks, now) {
+    // 刷新道具
+    if (
+      this.pickups.length < PICKUP_MAX &&
+      now - this.lastPickupSpawnAt >= PICKUP_SPAWN_INTERVAL_MS
+    ) {
+      this.lastPickupSpawnAt = now;
+      const types = Object.values(PICKUP_TYPE);
+      const pos = this._randomPickupPos();
+      if (pos) {
+        const type = types[Math.floor(Math.random() * types.length)];
+        const pickup = { id: `pk${++pickupSeq}`, type, x: pos.x, y: pos.y };
+        this.pickups.push(pickup);
+        this.pushEvent({ kind: EVENT_KIND.PICKUP_SPAWN, ...pickup });
+      }
+    }
+
+    // 拾取检测
+    const remaining = [];
+    for (const pickup of this.pickups) {
+      let taken = false;
+      for (const tank of tanks) {
+        if (!tank.alive) continue;
+        if (Math.hypot(tank.x - pickup.x, tank.y - pickup.y) > PICKUP_RADIUS) continue;
+
+        // 应用效果
+        const dur = PICKUP_DURATION[pickup.type];
+        if (pickup.type === PICKUP_TYPE.SHIELD) {
+          tank.shieldUntil = now + dur;
+          tank.invulnUntil = Math.max(tank.invulnUntil, tank.shieldUntil);
+        } else if (pickup.type === PICKUP_TYPE.BOOST) {
+          tank.boostUntil = now + dur;
+        } else if (pickup.type === PICKUP_TYPE.POWER) {
+          tank.powerUntil = now + dur;
+        }
+
+        this.pushEvent({
+          kind: EVENT_KIND.PICKUP_TAKE,
+          id: pickup.id,
+          type: pickup.type,
+          actorId: tank.id,
+          actor: tank.nickname,
+          color: tank.color,
+        });
+
+        taken = true;
+        break; // 每个道具只能被一人拾取
+      }
+      if (!taken) remaining.push(pickup);
+    }
+    this.pickups = remaining;
+  }
+
   /** 推进所有子弹，处理撞墙与命中 */
   stepBullets(dt, tanks, now) {
     const survived = [];
@@ -593,7 +711,9 @@ export class Room {
    */
   applyDamage(victim, bullet) {
     const attacker = this.players.get(bullet.ownerId);
-    victim.hp = Math.max(0, victim.hp - 1);
+    // 升级子弹或 power 道具激活时伤害 +1
+    const dmg = bullet.power ? 1 + UPGRADE_BONUS_DAMAGE : 1;
+    victim.hp = Math.max(0, victim.hp - dmg);
 
     this.pushEvent({
       kind: EVENT_KIND.HIT,
@@ -620,7 +740,20 @@ export class Room {
     victim.alive = false;
     victim.moveDir = null;
     victim.deaths++;
-    if (attacker && attacker.id !== victim.id) attacker.kills++;
+    if (attacker && attacker.id !== victim.id) {
+      attacker.kills++;
+      // 升级检查：击杀数首次达到阈值时升级
+      if (attacker.kills >= UPGRADE_KILLS && attacker.tier === 0) {
+        attacker.tier = 1;
+        this.pushEvent({
+          kind: EVENT_KIND.UPGRADE,
+          actorId: attacker.id,
+          actor: attacker.nickname,
+          color: attacker.color,
+          tier: 1,
+        });
+      }
+    }
 
     this.pushEvent({
       kind: EVENT_KIND.KILL,
@@ -761,6 +894,8 @@ export class Room {
       y: pos.y,
       dir: player.dir,
       color: player.color,
+      // power 道具激活时子弹携带双倍伤害标记
+      power: now < player.powerUntil ? 1 : 0,
     });
 
     this.pushEvent({
@@ -837,13 +972,23 @@ export class Room {
           alive: p.alive,
           // 仅在无敌期内下发，避免每帧传递无意义字段
           inv: now < p.invulnUntil ? 1 : 0,
+          // 升级等级
+          tier: p.tier,
+          // buff 截止时间（0 表示无效），客户端据此绘制图标
+          shieldUntil: p.shieldUntil,
+          boostUntil: p.boostUntil,
+          powerUntil: p.powerUntil,
         })),
       bullets: this.bullets.map((b) => ({
         id: b.id,
         x: Math.round(b.x),
         y: Math.round(b.y),
         color: b.color,
+        // 双倍伤害子弹在客户端显示为更大
+        power: b.power ?? 0,
       })),
+      // 道具列表，每帧全量下发（数量少，约 50B）
+      pickups: this.pickups.map((pk) => ({ id: pk.id, type: pk.type, x: pk.x, y: pk.y })),
       // 倒计时剩余毫秒。>0 表示尚未开打，客户端据此显示 3-2-1 并禁用操作提示
       cd: this.countdownUntil > 0 ? Math.max(0, this.countdownUntil - now) : 0,
     };

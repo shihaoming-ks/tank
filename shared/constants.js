@@ -207,6 +207,43 @@ export const RECONNECT_GRACE_MS = 20_000;
 /** 玩家配色，按加入顺序分配。索引即 slot */
 export const COLORS = ['#e94f37', '#3f88c5', '#44bba4', '#f6ae2d'];
 
+// ---------- 道具 ----------
+/** 道具类型 */
+export const PICKUP_TYPE = {
+  /** 护盾：拾取后无敌 3 秒 */
+  SHIELD: 'shield',
+  /** 加速：拾取后移速翻倍 5 秒 */
+  BOOST: 'boost',
+  /** 强化：拾取后子弹伤害翻倍 5 秒 */
+  POWER: 'power',
+};
+
+/** 道具持续时间（ms） */
+export const PICKUP_DURATION = {
+  [PICKUP_TYPE.SHIELD]: 3000,
+  [PICKUP_TYPE.BOOST]: 5000,
+  [PICKUP_TYPE.POWER]: 5000,
+};
+
+/** 地图上最多同时存在的道具数 */
+export const PICKUP_MAX = 3;
+
+/** 道具刷新间隔（ms）。每次检查若数量不足则补刷 */
+export const PICKUP_SPAWN_INTERVAL_MS = 8000;
+
+/** 道具拾取半径（px）：坦克中心距道具中心小于此值即拾取 */
+export const PICKUP_RADIUS = 20;
+
+// ---------- 坦克升级 ----------
+/** 坦克升级所需击杀数 */
+export const UPGRADE_KILLS = 2;
+
+/** 升级后子弹额外伤害（普通为 1，升级后为 1 + UPGRADE_BONUS_DAMAGE） */
+export const UPGRADE_BONUS_DAMAGE = 1;
+
+/** 升级后子弹尺寸增量（px，仅视觉） */
+export const UPGRADE_BULLET_SIZE_BONUS = 4;
+
 // ---------- 昵称约束 ----------
 export const NICKNAME_MIN_LEN = 1;
 export const NICKNAME_MAX_LEN = 12;

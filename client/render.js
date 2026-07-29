@@ -197,6 +197,15 @@ export class Renderer {
         });
       } else if (ev.kind === 'ram') {
         this.effects.push({ type: 'ram', x: ev.x, y: ev.y, born: now, life: 380 });
+      } else if (ev.kind === 'pickup_take') {
+        // 道具拾取：短暂闪光
+        this.effects.push({ type: 'pickup', x: ev.x ?? 0, y: ev.y ?? 0, born: now, life: 500, color: ev.type });
+      } else if (ev.kind === 'upgrade') {
+        // 升级特效：坦克处一圈金色爆散
+        const tankMeta = this.playerMeta.get(ev.actorId);
+        if (tankMeta) {
+          this.effects.push({ type: 'upgrade', x: tankMeta._x ?? 0, y: tankMeta._y ?? 0, born: now, life: 700 });
+        }
       }
     }
   }
@@ -220,8 +229,9 @@ export class Renderer {
     this.drawGround(ctx);
     if (this.grid) this.drawWalls(ctx);
     if (snap) {
-      for (const b of snap.bullets ?? []) this.drawBullet(ctx, b);
-      for (const t of snap.tanks   ?? []) this.drawTank(ctx, t);
+      for (const pk of snap.pickups ?? []) this.drawPickup(ctx, pk);
+      for (const b  of snap.bullets ?? []) this.drawBullet(ctx, b);
+      for (const t  of snap.tanks   ?? []) this.drawTank(ctx, t);
     }
     this.drawEffects(ctx);
 
@@ -453,9 +463,24 @@ export class Renderer {
       ctx.strokeRect(-h - 0.5, -h - 0.5, TANK_SIZE + 1, TANK_SIZE + 1);
     }
 
+    // 升级光环：tier=1 绘制金色外圈
+    if (tank.tier >= 1) {
+      ctx.globalAlpha = 0.85;
+      const now = performance.now();
+      const pulse = 0.6 + 0.4 * Math.abs(Math.sin(now / 400));
+      ctx.strokeStyle = `rgba(246,174,45,${pulse})`;
+      ctx.lineWidth   = 2.5;
+      ctx.shadowColor = '#f6ae2d';
+      ctx.shadowBlur  = 8;
+      const h = TANK_SIZE / 2 + 2;
+      ctx.strokeRect(-h, -h, TANK_SIZE + 4, TANK_SIZE + 4);
+      ctx.shadowBlur  = 0;
+    }
+
     ctx.restore();
 
     if (meta) this.drawNameplate(ctx, tank, meta);
+    if (tank.alive) this.drawBuffIcons(ctx, tank);
   }
 
   drawNameplate(ctx, tank, meta) {
@@ -515,23 +540,112 @@ export class Renderer {
     ctx.restore();
   }
 
+  drawBuffIcons(ctx, tank) {
+    const now = Date.now();
+    const buffs = [];
+    if (tank.shieldUntil > now) buffs.push({ icon: '🛡', color: '#3f88c5', until: tank.shieldUntil });
+    if (tank.boostUntil  > now) buffs.push({ icon: '⚡', color: '#44bba4', until: tank.boostUntil });
+    if (tank.powerUntil  > now) buffs.push({ icon: '🔥', color: '#f6ae2d', until: tank.powerUntil });
+    if (!buffs.length) return;
+
+    const iconSize = 11;
+    const gap      = 2;
+    const totalW   = buffs.length * iconSize + (buffs.length - 1) * gap;
+    const baseX    = tank.x - totalW / 2;
+    const baseY    = tank.y + TANK_SIZE / 2 + 3;
+
+    ctx.save();
+    buffs.forEach((b, i) => {
+      const x = baseX + i * (iconSize + gap);
+      // 剩余时间条（宽度比例）
+      const remain = Math.min(1, (b.until - now) / 5000);
+      ctx.fillStyle = 'rgb(0 0 0 / 55%)';
+      ctx.fillRect(x, baseY, iconSize, 3);
+      ctx.fillStyle = b.color;
+      ctx.fillRect(x, baseY, iconSize * remain, 3);
+      // emoji 图标
+      ctx.font         = `${iconSize}px serif`;
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(b.icon, x + iconSize / 2, baseY + 3);
+    });
+    ctx.restore();
+  }
+
   // ─── 子弹 ────────────────────────────────────────────────────────────────
 
   drawBullet(ctx, b) {
-    const img = this._img('bullet.png');
+    const img  = this._img('bullet.png');
+    const size = b.power ? BULLET_SIZE + 4 : BULLET_SIZE;
     ctx.save();
     if (img) {
-      const half = BULLET_SIZE / 2;
-      ctx.drawImage(img, b.x - half, b.y - half, BULLET_SIZE, BULLET_SIZE);
+      const half = size / 2;
+      ctx.drawImage(img, b.x - half, b.y - half, size, size);
+      // power 子弹叠橙色光晕
+      if (b.power) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.6;
+        ctx.shadowColor = '#ff8800';
+        ctx.shadowBlur  = 10;
+        ctx.drawImage(img, b.x - half, b.y - half, size, size);
+      }
     } else {
-      const tint = b.color ?? PALETTE.bullet;
+      const tint = b.power ? '#ff8800' : (b.color ?? PALETTE.bullet);
       ctx.shadowColor = tint;
-      ctx.shadowBlur  = 8;
-      ctx.fillStyle   = PALETTE.bullet;
+      ctx.shadowBlur  = b.power ? 14 : 8;
+      ctx.fillStyle   = tint;
       ctx.beginPath();
-      ctx.arc(b.x, b.y, BULLET_SIZE / 2, 0, Math.PI * 2);
+      ctx.arc(b.x, b.y, size / 2, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.restore();
+  }
+
+  // ─── 道具 ────────────────────────────────────────────────────────────────
+
+  drawPickup(ctx, pk) {
+    const now  = performance.now();
+    // 呼吸动画：上下浮动 3px，缩放 0.85~1.15
+    const wave = Math.sin(now / 600 + pk.x);
+    const scale = 0.95 + 0.1 * wave;
+    const offY  = wave * 3;
+
+    const COLOR = {
+      shield: '#3f88c5',
+      boost:  '#44bba4',
+      power:  '#f6ae2d',
+    };
+    const LABEL = { shield: '🛡', boost: '⚡', power: '🔥' };
+    const color = COLOR[pk.type] ?? '#fff';
+
+    ctx.save();
+    ctx.translate(pk.x, pk.y + offY);
+    ctx.scale(scale, scale);
+
+    // 外圈发光
+    ctx.shadowColor = color;
+    ctx.shadowBlur  = 12;
+
+    // 背景圆
+    ctx.fillStyle = 'rgb(0 0 0 / 55%)';
+    ctx.beginPath();
+    ctx.arc(0, 0, 13, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 彩色环
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 13, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 中心 emoji
+    ctx.shadowBlur = 0;
+    ctx.font = '14px serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(LABEL[pk.type] ?? '?', 0, 1);
+
     ctx.restore();
   }
 
@@ -635,6 +749,28 @@ export class Renderer {
       ctx.globalAlpha  = Math.max(0, 1-p*2.4);
       ctx.fillStyle    = '#fff6df';
       ctx.beginPath(); ctx.arc(fx.x, fx.y, 9*(1-p), 0, Math.PI*2); ctx.fill();
+    } else if (fx.type === 'pickup') {
+      // 道具拾取：向外扩散的亮环
+      const PICKUP_COLOR = { shield: '#3f88c5', boost: '#44bba4', power: '#f6ae2d' };
+      const col = PICKUP_COLOR[fx.color] ?? '#ffffff';
+      ctx.globalAlpha = (1 - p) * 0.9;
+      ctx.strokeStyle = col;
+      ctx.lineWidth   = 3 * (1 - p) + 0.5;
+      ctx.shadowColor = col;
+      ctx.shadowBlur  = 10;
+      ctx.beginPath(); ctx.arc(fx.x, fx.y, 8 + p * 28, 0, Math.PI * 2); ctx.stroke();
+    } else if (fx.type === 'upgrade') {
+      // 升级：金色爆散碎片
+      ctx.globalAlpha = 1 - p;
+      ctx.fillStyle   = '#f6ae2d';
+      ctx.shadowColor = '#f6ae2d';
+      ctx.shadowBlur  = 8;
+      for (let i = 0; i < 10; i++) {
+        const a  = (i / 10) * Math.PI * 2;
+        const d  = p * 38;
+        const sz = 5 * (1 - p) + 1;
+        ctx.fillRect(fx.x + Math.cos(a) * d - sz / 2, fx.y + Math.sin(a) * d - sz / 2, sz, sz);
+      }
     }
   }
 
