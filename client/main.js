@@ -670,18 +670,21 @@ if (roomCodeInput) {
     roomCodeInput.value = digits;
     syncRoomCode();
   });
-  // 点击视觉格子：定位光标到对应位置，支持鼠标点击修改任意位
+  // 点击任意位置：按 X 坐标计算对应的字符位置，设置光标
   document.getElementById('room-code')?.addEventListener('click', (e) => {
     roomCodeInput.focus();
-    // 找点击的是哪个 .otp-cell
-    const cell = e.target.closest('.otp-cell');
-    if (cell) {
-      const idx = parseInt(cell.dataset.idx ?? '0', 10);
-      const val = roomCodeInput.value;
-      // 把光标定位到该格：已有字符则选中它（直接覆盖），超出末尾则移到末尾
-      const pos = Math.min(idx, val.length);
-      roomCodeInput.setSelectionRange(pos, Math.min(pos + 1, val.length));
-    }
+    const rect = e.currentTarget.getBoundingClientRect();
+    const relX  = e.clientX - rect.left;
+    const idx   = Math.min(Math.floor(relX / (rect.width / 4)), 3);
+    const val   = roomCodeInput.value;
+    // 点击的格子超出已有字符数：光标移到末尾
+    const pos   = Math.min(idx, val.length);
+    const end   = Math.min(pos + 1, val.length);
+    // setTimeout 确保在浏览器自身的光标落点之后再覆盖
+    setTimeout(() => {
+      roomCodeInput.setSelectionRange(pos, end);
+      syncRoomCode();
+    }, 0);
   });
 }
 els.nickname.addEventListener('keydown', (e) => {
