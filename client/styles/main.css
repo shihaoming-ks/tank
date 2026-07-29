@@ -735,16 +735,18 @@ h1 {
 .hud-player.is-spectator { opacity: 0.72; border-style: dashed; }
 .hud-player.is-spectator .hud-hp { color: var(--amber); font-size: 10px; }
 /* === Arena command deck refresh === */
-:root { --ink:#07100e; --panel:#0d1916; --panel-2:#12221d; --line:#29453b; --line-bright:#5a806b; --paper:#e9e5d1; --muted:#99a89b; --acid:#d7f25b; --signal:#f6ae2d; --danger:#ff6b57; }
-body { padding-top:76px; background-color:var(--ink); background-image: radial-gradient(circle at 15% 10%, rgb(215 242 91 / 10%), transparent 28%), radial-gradient(circle at 85% 80%, rgb(68 187 164 / 12%), transparent 30%), linear-gradient(rgb(91 128 107 / 11%) 1px, transparent 1px), linear-gradient(90deg, rgb(91 128 107 / 11%) 1px, transparent 1px); background-size:auto,auto,28px 28px,28px 28px; color:var(--paper); }
-body::before { content:''; position:fixed; inset:0; pointer-events:none; opacity:.16; z-index:999; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.38'/%3E%3C/svg%3E"); }
-.topbar { height:58px; padding:0 clamp(18px,4vw,56px); background:rgb(7 16 14 / 86%); border-bottom-color:var(--line-bright); box-shadow:0 8px 30px rgb(0 0 0 / 28%); }
-.brand { font-size:15px; color:var(--acid); letter-spacing:.22em; text-shadow:0 0 14px rgb(215 242 91 / 38%); }
+:root { --ink:#12150f; --panel:#272c22; --panel-2:#32382d; --line:#41483d; --line-bright:#5a5f52; --paper:#f1f0df; --muted:#b9beab; --acid:#f6ae2d; --signal:#f6ae2d; --danger:#e94f37; }
+body { padding-top:76px; background-color:var(--ink); background-image: linear-gradient(rgb(26 30 22 / 80%) 1px, transparent 1px), linear-gradient(90deg, rgb(26 30 22 / 80%) 1px, transparent 1px); background-size:32px 32px; color:var(--paper); }
+/* 噪点膜：工业主题不使用，其他主题保留 */
+body:not([data-theme='industrial'])::before { content:''; position:fixed; inset:0; pointer-events:none; opacity:.16; z-index:999; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 160 160' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.38'/%3E%3C/svg%3E"); }
+.topbar { height:58px; padding:0 clamp(18px,4vw,56px); background:rgb(18 21 15 / 90%); border-bottom-color:var(--line-bright); box-shadow:0 4px 16px rgb(0 0 0 / 32%); }
+.brand { font-size:15px; color:var(--acid); letter-spacing:.22em; text-shadow:0 0 10px rgb(246 174 45 / 28%); }
 .brand::before { content:'◈ '; color:var(--signal); }
-.conn { padding:6px 10px; border:1px solid var(--line); background:rgb(18 34 29 / 70%); }
+.conn { padding:6px 10px; border:1px solid var(--line); background:rgb(39 44 34 / 70%); }
 .view { width:min(540px,100%); }
-.panel { position:relative; overflow:hidden; padding:34px; border:1px solid var(--line-bright); border-radius:12px 2px 12px 2px; background:linear-gradient(145deg,rgb(19 35 30 / 96%),rgb(8 19 16 / 96%)); box-shadow:18px 18px 0 rgb(0 0 0 / 23%),0 28px 80px rgb(0 0 0 / 48%); }
-.panel::after { content:'SECTOR // READY'; position:absolute; top:12px; right:14px; color:rgb(215 242 91 / 42%); font-size:9px; letter-spacing:.16em; }
+.panel { position:relative; overflow:hidden; padding:34px; border:1px solid var(--line-bright); border-radius:2px; background:var(--panel); box-shadow:4px 4px 0 rgb(0 0 0 / 28%),0 28px 80px rgb(0 0 0 / 48%); }
+.panel::after { content:''; position:absolute; top:12px; right:14px; color:rgb(246 174 45 / 38%); font-size:9px; letter-spacing:.16em; }
+body[data-theme='industrial'] .panel::after { content:'ARMD UNIT // READY'; }
 .panel-head { border-bottom-color:var(--line); }
 h1 { font-size:24px; color:var(--paper); letter-spacing:.14em; }
 .subtitle { color:var(--muted); }
@@ -752,19 +754,19 @@ h1 { font-size:24px; color:var(--paper); letter-spacing:.14em; }
 .input { border-radius:6px; border-color:var(--line); background:rgb(3 12 10 / 76%); padding:13px 14px; color:var(--paper); }
 .input:focus { border-color:var(--acid); box-shadow:0 0 0 3px rgb(215 242 91 / 12%); }
 .room-code { display:grid; grid-template-columns:repeat(4,1fr); gap:9px; }
-.room-digit { min-width:0; height:58px; border:1px solid var(--line-bright); border-radius:7px 2px 7px 2px; background:rgb(3 12 10 / 80%); color:var(--signal); font:600 28px/1 var(--mono); text-align:center; caret-color:var(--acid); transition:transform .16s, border-color .16s, box-shadow .16s; }
-.room-digit:focus { outline:0; transform:translateY(-3px); border-color:var(--acid); box-shadow:0 8px 18px rgb(0 0 0 / 35%),0 0 0 3px rgb(215 242 91 / 12%); }
-.btn { border-radius:6px 2px 6px 2px; border-color:var(--line-bright); font-weight:600; }
-.btn-primary { color:var(--ink); background:var(--acid); border-color:var(--acid); box-shadow:0 8px 18px rgb(215 242 91 / 15%); }
-.btn-primary:hover:not(:disabled) { color:var(--ink); background:#ebff8d; box-shadow:0 10px 24px rgb(215 242 91 / 25%); }
+.room-digit { min-width:0; height:58px; border:1px solid var(--line-bright); border-radius:2px; background:rgb(18 21 15 / 80%); color:var(--signal); font:600 28px/1 var(--mono); text-align:center; caret-color:var(--acid); transition:transform .16s, border-color .16s, box-shadow .16s; }
+.room-digit:focus { outline:0; transform:translateY(-2px); border-color:var(--acid); box-shadow:0 6px 14px rgb(0 0 0 / 35%),0 0 0 2px rgb(246 174 45 / 18%); }
+.btn { border-radius:2px; border-color:var(--line-bright); font-weight:600; }
+.btn-primary { color:var(--ink); background:var(--acid); border-color:var(--acid); box-shadow:0 8px 18px rgb(246 174 45 / 15%); }
+.btn-primary:hover:not(:disabled) { color:var(--ink); background:#ffbe50; box-shadow:0 10px 24px rgb(246 174 45 / 25%); }
 .divider span { background:var(--panel); }
-.roster { border-radius:7px 2px 7px 2px; background:rgb(3 12 10 / 54%); }
-.roster-item { transition:background .16s, padding-left .16s; }.roster-item:hover { background:rgb(215 242 91 / 6%); padding-left:16px; }
+.roster { border-radius:2px; background:rgb(18 21 15 / 54%); }
+.roster-item { transition:background .16s, padding-left .16s; }.roster-item:hover { background:rgb(246 174 45 / 6%); padding-left:16px; }
 .tag-spectator { color:var(--signal); border:1px dashed var(--signal); }
-.hud,.feed-wrap { border-color:var(--line-bright); background:rgb(13 25 22 / 92%); box-shadow:0 12px 32px rgb(0 0 0 / 28%); }
-.hud { border-radius:8px 2px 8px 2px; }.canvas { border-color:var(--line-bright); box-shadow:0 0 0 5px rgb(215 242 91 / 5%),0 28px 60px rgb(0 0 0 / 55%); }
+.hud,.feed-wrap { border-color:var(--line-bright); background:rgb(39 44 34 / 92%); box-shadow:0 12px 32px rgb(0 0 0 / 28%); }
+.hud { border-radius:8px 2px 8px 2px; }.canvas { border-color:var(--line-bright); box-shadow:0 0 0 3px rgb(90 95 82 / 30%),0 28px 60px rgb(0 0 0 / 55%); }
 .hud-timer { color:var(--acid); font-weight:600; }.hud-player { border-radius:5px 1px 5px 1px; }.feed-wrap { border-radius:8px 2px 8px 2px; }
-.overlay { background:rgb(2 9 7 / 80%); }.overlay-box { border-radius:12px 2px 12px 2px; background:linear-gradient(145deg,#14231d,#07100e); }
+.overlay { background:rgb(12 14 10 / 82%); }.overlay-box { border-radius:2px; background:var(--panel); }
 @media (max-width:600px){ body{padding:70px 12px 18px}.panel{padding:28px 20px}.topbar{padding:0 16px}.brand{font-size:12px}.hud{gap:8px;padding:9px}.hud-left{display:none}.hud-player{padding:4px 6px}.hud-players{justify-content:flex-start}.controls-hint{gap:10px;font-size:10px}.room-digit{height:54px} }
 /* ---------- 四套可切换视觉主题 ---------- */
 .theme-switch { display:flex; align-items:center; gap:7px; margin-left:auto; margin-right:14px; color:var(--muted, var(--fg-dim)); font-size:10px; letter-spacing:.12em; }
@@ -772,7 +774,7 @@ h1 { font-size:24px; color:var(--paper); letter-spacing:.14em; }
 .theme-switch select:focus { outline:2px solid var(--acid, var(--amber)); outline-offset:2px; }
 
 /* 军械终端：默认，深橄榄金属与荧光黄绿色。 */
-body[data-theme='industrial'] { --ink:#07100e; --panel:#0d1916; --panel-2:#12221d; --line:#29453b; --line-bright:#5a806b; --paper:#e9e5d1; --muted:#99a89b; --acid:#d7f25b; --signal:#f6ae2d; --danger:#ff6b57; }
+body[data-theme='industrial'] { --ink:#12150f; --panel:#272c22; --panel-2:#32382d; --line:#41483d; --line-bright:#5a5f52; --paper:#f1f0df; --muted:#b9beab; --acid:#f6ae2d; --signal:#f6ae2d; --danger:#e94f37; }
 
 /* 像素街机：高对比蓝紫街机机柜，硬像素边框与无圆角。 */
 body[data-theme='pixel'] { --ink:#110f2b; --panel:#211d4a; --panel-2:#302a68; --line:#6658ba; --line-bright:#b9a6ff; --paper:#fff4c7; --muted:#b5aed8; --acid:#67f5d0; --signal:#ffda59; --danger:#ff5a91; background-color:var(--ink); background-image:linear-gradient(90deg,rgb(255 255 255 / 4%) 1px,transparent 1px),linear-gradient(rgb(255 255 255 / 4%) 1px,transparent 1px); background-size:8px 8px; image-rendering:pixelated; }
@@ -804,9 +806,9 @@ body[data-theme='neon'] .room-digit:focus { box-shadow:0 0 0 3px rgb(63 247 212 
 /* ---------- 主题的版式与组件语言（不仅是换色） ---------- */
 
 /* 军械终端：高密度、对齐到网格的控制台。 */
-body[data-theme='industrial'] .topbar { clip-path:polygon(0 0,100% 0,100% 84%,98% 100%,0 100%); }
+body[data-theme='industrial'] .topbar { border-bottom:2px solid var(--line-bright); }
 body[data-theme='industrial'] .panel { isolation:isolate; }
-body[data-theme='industrial'] .panel::before { content:''; position:absolute; inset:0; z-index:-1; opacity:.34; background:repeating-linear-gradient(135deg,transparent 0 22px,rgb(215 242 91 / 3%) 23px 24px); }
+body[data-theme='industrial'] .panel::before { content:''; position:absolute; inset:0; z-index:-1; opacity:.45; background:repeating-linear-gradient(135deg,transparent 0 22px,rgb(90 95 82 / 8%) 23px 24px); }
 body[data-theme='industrial'] .panel-head::before { content:'///'; margin-right:9px; color:var(--signal); letter-spacing:-.1em; }
 body[data-theme='industrial'] .btn { text-transform:uppercase; letter-spacing:.12em; }
 
@@ -883,7 +885,7 @@ body[data-theme='neon'] .hud { border-radius:0; clip-path:polygon(0 0,calc(100% 
   body[data-theme='neon'] .panel-head::after { display:none; }
 }
 /* ---------- 主题文字对比度：正文、辅助信息与快捷键必须随主题变化 ---------- */
-body[data-theme='industrial'] { --fg:#e9e5d1; --fg-dim:#99a89b; --amber:#f6ae2d; --green:#44bba4; --red:#ff6b57; }
+body[data-theme='industrial'] { --fg:#f1f0df; --fg-dim:#b9beab; --amber:#f6ae2d; --green:#44bba4; --red:#e94f37; }
 body[data-theme='pixel'] { --fg:#fff4c7; --fg-dim:#c9c1eb; --amber:#ffda59; --green:#67f5d0; --red:#ff5a91; }
 body[data-theme='cartoon'] { --fg:#273b35; --fg-dim:#466055; --amber:#a53f20; --green:#2d755f; --red:#b53e35; }
 body[data-theme='neon'] { --fg:#e8edff; --fg-dim:#b8bde3; --amber:#ff83d3; --green:#3ff7d4; --red:#ff6979; }
