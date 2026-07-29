@@ -615,78 +615,34 @@ els.btnJoin.addEventListener('click', () => {
 els.roomIdInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') els.btnJoin.click();
 });
-const roomDigits = [...document.querySelectorAll('.room-digit')];
+const roomCodeInput = document.getElementById('input-roomcode');
 function syncRoomCode() {
-  els.roomIdInput.value = roomDigits.map((input) => input.value).join('');
+  els.roomIdInput.value = (roomCodeInput?.value ?? '').replace(/\D/g, '').slice(0, 4);
 }
 function clearRoomCode() {
-  for (const input of roomDigits) input.value = '';
+  if (roomCodeInput) roomCodeInput.value = '';
   syncRoomCode();
 }
-roomDigits.forEach((input, index) => {
-  // ── input：唯一的字符处理入口（keydown 不拦截字符，避免 Safari 双触发）──
-  input.addEventListener('input', () => {
-    // 取最后一个数字字符（兼容各种 IME / 软键盘插入多字符的情况）
-    const val = input.value.replace(/\D/g, '').slice(-1);
-    input.value = val;
+if (roomCodeInput) {
+  roomCodeInput.addEventListener('input', () => {
+    // 只保留数字，最多 4 位
+    const val = roomCodeInput.value.replace(/\D/g, '').slice(0, 4);
+    roomCodeInput.value = val;
     syncRoomCode();
-    if (val && index < roomDigits.length - 1) {
-      roomDigits[index + 1].focus();
-    }
   });
-
-  // ── keydown：只处理导航键，不碰字符键 ───────────────────────────────────
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { els.btnJoin.click(); return; }
-
-    if (e.key === 'Backspace') {
-      if (input.value) {
-        // 有值：清空当前格，不跳格（input 事件会随后触发，再 syncRoomCode）
-        // 直接清空 value，让后续 input 事件处理 sync
-        input.value = '';
-        syncRoomCode();
-      } else if (index > 0) {
-        roomDigits[index - 1].focus();
-      }
-      e.preventDefault();
-      return;
-    }
-
-    if (e.key === 'ArrowLeft' && index > 0) {
-      e.preventDefault();
-      roomDigits[index - 1].focus();
-      return;
-    }
-    if (e.key === 'ArrowRight' && index < roomDigits.length - 1) {
-      e.preventDefault();
-      roomDigits[index + 1].focus();
-      return;
-    }
-
-    // 已有值且即将输入新数字：先清空，让 input 事件接管
-    // （Safari 不触发 beforeinput，用 focus 事件选中全部文字让浏览器自然替换）
-    if (input.value && e.key >= '0' && e.key <= '9') {
-      input.value = '';
-      // 不 preventDefault：让字符正常写入，input 事件接管后续
-    }
+  roomCodeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') els.btnJoin.click();
   });
-
-  // ── focus：选中当前格全部内容（方便直接覆盖）────────────────────────────
-  input.addEventListener('focus', () => {
-    // 延迟到下一帧再 select，兼容 Safari 的 focus 时序
-    requestAnimationFrame(() => input.select());
-  });
-
-  // ── paste：整段粘贴填满所有格 ─────────────────────────────────────────
-  input.addEventListener('paste', (e) => {
+  roomCodeInput.addEventListener('paste', (e) => {
     const digits = (e.clipboardData?.getData('text') ?? '').replace(/\D/g, '').slice(0, 4);
     if (!digits) return;
     e.preventDefault();
-    for (let i = 0; i < roomDigits.length; i++) roomDigits[i].value = digits[i] ?? '';
-    roomDigits[Math.min(digits.length, 4) - 1].focus();
+    roomCodeInput.value = digits;
     syncRoomCode();
   });
-});
+}
+// 兼容旧代码中对 roomDigits 的引用（clearRoomCode 已统一处理）
+const roomDigits = [];
 els.nickname.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     els.roomIdInput.value.trim() ? els.btnJoin.click() : els.btnCreate.click();
