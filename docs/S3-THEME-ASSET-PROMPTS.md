@@ -35,6 +35,11 @@
 ```text
 请使用 game-asset-forge 为 Tank Arena 制作"军械终端（industrial）"完整视觉素材包。输出到 assets/industrial/。
 先交付素材简报和资产清单；先生成 tank-red.png、tile-brick-3.png、fx-explosion.png 三张样本，经确认后完成其余文件。
+同时输出 frontend-style-prompt.md：这是一段可直接交给前端实现 Agent 的完整提示词，用于实现与本主题素材一致的前端界面；
+包含主题值（industrial）、素材目录、CSS 颜色令牌、字体与文字对比度、页面布局、面板/按钮/输入框/HUD/战报样式、
+响应式规则和验收要求。
+同时输出 `frontend-style-prompt.md`：这是一段可直接交给前端实现 Agent 的完整提示词，用于实现与本主题素材一致的前端界面；包含主题值（`industrial`）、素材目录、CSS 颜色令牌、字体与文字对比度、页面布局、面板/按钮/输入/HUD/战报状态、响应式规则和验收要求。
+同时输出 frontend-style-prompt.md：这是一段可直接交给前端实现 Agent 的完整提示词，用于实现与本主题素材一致的前端界面；包含主题值（industrial）、素材目录、CSS 颜色令牌、字体与文字对比度、页面布局、面板/按钮/输入/HUD/战报状态、响应式规则和验收要求。（注：本主题的 frontend-style-prompt.md 已生成，可跳过此项。）
 
 【游戏语境】
 这是 30×20、每格 32px 的俯视角多人坦克对战。玩家必须在快速移动中立即分辨自己、敌方、可破坏砖墙、
@@ -90,6 +95,11 @@
 ```text
 请使用 game-asset-forge 为 Tank Arena 制作"像素街机（pixel）"完整视觉素材包。输出到 assets/pixel/。
 先交付素材简报和资产清单；先生成 tank-red.png、tile-brick-3.png、fx-explosion.png 三张样本，经确认后完成其余文件。
+同时输出 frontend-style-prompt.md：这是一段可直接交给前端实现 Agent 的完整提示词，用于实现与本主题素材一致的前端界面；
+包含主题值（pixel）、素材目录、CSS 颜色令牌、字体（像素等宽字体优先）与文字对比度、页面布局、
+面板/按钮/输入框/HUD/战报样式（零圆角、像素边框）、响应式规则和验收要求。
+同时输出 `frontend-style-prompt.md`：这是一段可直接交给前端实现 Agent 的完整提示词，用于实现与本主题素材一致的前端界面；包含主题值（`pixel`）、素材目录、CSS 颜色令牌、字体与文字对比度、页面布局、面板/按钮/输入/HUD/战报状态、响应式规则和验收要求。像素主题需额外说明：使用等宽像素字体（如 Press Start 2P 或 monospace fallback）、所有圆角清零、box-shadow 改为像素偏移阴影。
+同时输出 frontend-style-prompt.md：这是一段可直接交给前端实现 Agent 的完整提示词，用于实现与本主题素材一致的前端界面；包含主题值（pixel）、素材目录、CSS 颜色令牌（像素调色板）、字体（等宽像素字体）与文字对比度、页面布局、面板/按钮/输入/HUD/战报状态、响应式规则和验收要求。
 
 【游戏语境】
 这是 30×20、每格 32px 的俯视角多人坦克对战。素材需在快速移动和 1× 显示尺寸下清楚区分敌我、
@@ -142,6 +152,11 @@
 ```text
 请使用 game-asset-forge 为 Tank Arena 制作"手绘战术（cartoon）"完整视觉素材包。输出到 assets/cartoon/。
 先交付素材简报和资产清单；先生成 tank-red.png、tile-brick-3.png、fx-explosion.png 三张样本，经确认后完成其余文件。
+同时输出 frontend-style-prompt.md：这是一段可直接交给前端实现 Agent 的完整提示词，用于实现与本主题素材一致的前端界面；
+包含主题值（cartoon）、素材目录、CSS 颜色令牌、字体（手写/衬线优先）与文字对比度、页面布局、
+面板/按钮/输入框/HUD/战报样式（圆角、手绘描边感）、响应式规则和验收要求。
+同时输出 `frontend-style-prompt.md`：这是一段可直接交给前端实现 Agent 的完整提示词，用于实现与本主题素材一致的前端界面；包含主题值（`cartoon`）、素材目录、CSS 颜色令牌、字体与文字对比度、页面布局、面板/按钮/输入/HUD/战报状态、响应式规则和验收要求。手绘主题需额外说明：使用衬线或手写风字体、面板/按钮使用不规则圆角（如 border-radius: 18px 7px 16px 9px）、轻微旋转装饰、暖色调背景。
+同时输出 frontend-style-prompt.md：这是一段可直接交给前端实现 Agent 的完整提示词，用于实现与本主题素材一致的前端界面；包含主题值（cartoon）、素材目录、CSS 颜色令牌（暖沙纸调色板）、字体（衬线/手写风格）与文字对比度、页面布局、面板/按钮/输入/HUD/战报状态、响应式规则和验收要求。
 
 【游戏语境】
 这是 30×20、每格 32px 的俯视角多人坦克对战。视觉需要快速辨认，不能因纸张纹理或手绘细节掩盖
@@ -196,6 +211,11 @@
 ```text
 请使用 game-asset-forge 为 Tank Arena 制作"霓虹赛博（neon）"完整视觉素材包。输出到 assets/neon/。
 先交付素材简报和资产清单；先生成 tank-red.png、tile-brick-3.png、fx-explosion.png 三张样本，经确认后完成其余文件。
+同时输出 frontend-style-prompt.md：这是一段可直接交给前端实现 Agent 的完整提示词，用于实现与本主题素材一致的前端界面；
+包含主题值（neon）、素材目录、CSS 颜色令牌、字体（等宽/未来感优先）与文字对比度、页面布局、
+面板/按钮/输入框/HUD/战报样式（锐利边缘、发光边框）、响应式规则和验收要求。
+同时输出 `frontend-style-prompt.md`：这是一段可直接交给前端实现 Agent 的完整提示词，用于实现与本主题素材一致的前端界面；包含主题值（`neon`）、素材目录、CSS 颜色令牌、字体与文字对比度、页面布局、面板/按钮/输入/HUD/战报状态、响应式规则和验收要求。霓虹主题需额外说明：使用等宽科技字体、面板背景深蓝紫带 backdrop-filter 模糊、边框使用 text-shadow/box-shadow 模拟发光、但发光克制不过曝。
+同时输出 frontend-style-prompt.md：这是一段可直接交给前端实现 Agent 的完整提示词，用于实现与本主题素材一致的前端界面；包含主题值（neon）、素材目录、CSS 颜色令牌（近黑蓝/青/品红调色板）、字体（等宽/未来感）与文字对比度、页面布局、面板/按钮/输入/HUD/战报状态、响应式规则和验收要求。
 
 【游戏语境】
 这是 30×20、每格 32px 的俯视角多人坦克对战。深色战场中，子弹、墙体耐久和坦克朝向必须清楚；
@@ -251,6 +271,6 @@
 
 - 前端主题由 `body[data-theme]` 控制，选择值持久化在 `localStorage` 的 `tank:theme`。
 - 主题值与素材目录严格一致，例如 `neon` 对应 `assets/neon/tank-red.png`。
-- 渲染器在 `_img(name)` 中检查 `body.dataset.theme`，非 `industrial` 时返回 `null`，**当前其余三个主题均用 Canvas 几何绘制**；接入新主题只需在 `_preload()` 改 `ASSETS` 常量并重新预加载。
+- 渲染器在 `_img(name)` 中检查 `body.dataset.theme`，当前 `industrial`、`pixel` 已加载对应目录素材；`cartoon`、`neon` 仍用 Canvas 几何绘制。接入新主题时，将主题名加入 `ASSET_THEMES`，预加载会自动读取该目录。
 - 生成完成后应按主题独立验收，不可把工业砖墙和赛博坦克混用。
 - 图片加载失败时渲染器自动回退 Canvas 几何绘制，游戏可玩性不受影响。
