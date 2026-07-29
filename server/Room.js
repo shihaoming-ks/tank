@@ -24,6 +24,7 @@ import {
   PICKUP_RADIUS,
   PICKUP_SPAWN_INTERVAL_MS,
   PICKUP_TYPE,
+  BRICK_DROP_CHANCE,
   RAM_COOLDOWN_MS,
   RAM_DAMAGE,
   RESPAWN_INVULN_MS,
@@ -680,6 +681,17 @@ export class Room {
             hp: brickHp,
             broken: broken ? 1 : 0,
           });
+
+          // 砖块完全击破时，概率掉落道具
+          if (broken && Math.random() < BRICK_DROP_CHANCE && this.pickups.length < PICKUP_MAX) {
+            const cx = next.col * TILE + TILE / 2;
+            const cy = next.row * TILE + TILE / 2;
+            const types = Object.values(PICKUP_TYPE);
+            const type  = types[Math.floor(Math.random() * types.length)];
+            const pickup = { id: `pk${++pickupSeq}`, type, x: cx, y: cy };
+            this.pickups.push(pickup);
+            this.pushEvent({ kind: EVENT_KIND.PICKUP_SPAWN, ...pickup });
+          }
         }
 
         // 撞墙也给反馈，否则玩家不知道子弹打到哪了

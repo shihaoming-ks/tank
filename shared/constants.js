@@ -220,16 +220,21 @@ export const PICKUP_TYPE = {
 
 /** 道具持续时间（ms） */
 export const PICKUP_DURATION = {
-  [PICKUP_TYPE.SHIELD]: 3000,
-  [PICKUP_TYPE.BOOST]: 5000,
+  /** 护盾：缩短到 1.5 秒，避免无敌时间过长影响对抗体验 */
+  [PICKUP_TYPE.SHIELD]: 1500,
+  /** 加速：缩短到 3 秒，适当的战术窗口 */
+  [PICKUP_TYPE.BOOST]: 3000,
   [PICKUP_TYPE.POWER]: 5000,
 };
 
-/** 地图上最多同时存在的道具数 */
-export const PICKUP_MAX = 3;
+/** 地图上最多同时存在的道具数（定时刷新上限） */
+export const PICKUP_MAX = 2;
 
-/** 道具刷新间隔（ms）。每次检查若数量不足则补刷 */
-export const PICKUP_SPAWN_INTERVAL_MS = 8000;
+/** 道具刷新间隔（ms）。20 秒一个，与砖块掉落互为补充 */
+export const PICKUP_SPAWN_INTERVAL_MS = 20000;
+
+/** 砖块被击破时产生道具的概率（0~1） */
+export const BRICK_DROP_CHANCE = 0.25;
 
 /** 道具拾取半径（px）：坦克中心距道具中心小于此值即拾取 */
 export const PICKUP_RADIUS = 20;
